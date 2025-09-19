@@ -121,7 +121,7 @@ let
   # Read in an initial state from a MATLAB file
   #******************************************************************************************************
   chi = [2, 4, 8, 16, fill(32, 15)..., 16, 8, 4, 2]
-  input_file = matopen("../data/A_chi32.mat")
+  input_file = matopen("../data/A_chi32_AFM.mat")
   input_tensors = read(input_file)
   @show typeof(input_tensors)
   close(input_file)
@@ -149,7 +149,7 @@ let
     next_index = Index(chi[idx], "Link, l=$(idx)")
     site_index = Index(2, "S=1/2, n=$(idx)")
     @show prev_index, next_index, site_index, chi[idx], size(input_tensors["A"][idx])
-    tensor_array[idx] = ITensor(input_tensors["A"][idx], site_index, prev_index, next_index)
+    tensor_array[idx] = ITensor(input_tensors["A"][idx], prev_index, next_index, site_index)
     prev_index = next_index
     # @show prev_index
     # @show i, j, k = siteinds(ψ₀)[idx], linkind(ψ₀, idx-1), linkind(ψ₀, idx)
@@ -185,6 +185,8 @@ let
     variance = H2 - E₀^2
   end
   println("")
+  println("")
+  println("Energy of the read-in state:")
   @show E₀
   println("Variance of the energy is $variance")
   println("")
