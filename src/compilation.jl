@@ -17,7 +17,6 @@ MKL_NUM_THREADS = 8
 OPENBLAS_NUM_THREADS = 8
 OMP_NUM_THREADS = 8
 
-
 # Monitor the number of threads used by BLAS and LAPACK
 @show BLAS.get_config()
 @show BLAS.get_num_threads()
@@ -27,9 +26,16 @@ const N = 8  # Total number of qubits
 const J₁ = 1.0
 const τ = 0.1
 const cutoff = 1e-10
-const nsweeps = 10
+const nsweeps = 200
 const time_machine = TimerOutput()  # Timing and profiling
 
+
+# Define a function to compute the cost function given two MPS and a set of unitaries
+function compute_cost_function(input_ψ_L::MPS, input_ψ_R::MPS, input_gates::Vector{ITensor})
+  tmp_ψ = apply(input_gates, input_ψ_L; cutoff=cutoff)
+  normalize!(tmp_ψ)
+  return real(inner(tmp_ψ, input_ψ_R))
+end
 
 
 let
@@ -41,7 +47,7 @@ let
   # Initialize the origiinal random MPS
   sites = siteinds("S=1/2", N; conserve_qns=false)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
-  ψ₀ = random_mps(sites, state; linkdims=20)  # Initialize the original random MPS
+  ψ₀ = random_mps(sites, state; linkdims=16)  # Initialize the original random MPS
   # ψ₀ = MPS(sites, state)                    # Initialize the MPS in a Neel state
   # @show ψ₀
 
@@ -61,7 +67,7 @@ let
   
   #*****************************************************************************************************
   #*****************************************************************************************************
-  # Construc a sequence of two-qubit gates
+  # Construct a sequence of two-qubit gates
   gates = ITensor[]
   for idx in 1:2:(N-1)
     # @show idx
@@ -90,10 +96,10 @@ let
   println("")
   @show Sx_R
   println("")
-  @show Sz₀
-  println("")
-  @show Sz_R
-  println("")
+  # @show Sz₀
+  # println("")
+  # @show Sz_R
+  # println("")
   
   optimization_gates = ITensor[]
   for idx in 1:2:(N-1)
@@ -106,58 +112,10 @@ let
   # @show length(optimization_gates)
   
   
-  cost_function = Vector{Float64}(undef, nsweeps)
-  reference_cost_function = Vector{Float64}(undef, nsweeps)
+  cost_function, reference = Vector{Float64}(undef, nsweeps), Vector{Float64}(undef, nsweeps)
   for iteration in 1 : nsweeps
     for idx in 1 : length(optimization_gates)
-      @show optimization_gates[idx]
-      
-      # Contract psi_L and the two-qubit gate to form a new MPS
-      tmp_Gates = deepcopy(optimization_gates)
-      deleteat!(tmp_Gates, idx)
-      tmp_ψ = apply(tmp_Gates, ψ₀; cutoff=cutoff)
-      i₁, i₂ = siteind(tmp_ψ, 2 * idx - 1), siteind(tmp_ψ, 2 * idx)
-      @show i₁, i₂
-      println("")
-
-      # Set specific site indices to be primed
-      # prime!(ψ_R, siteind(ψ_R, 2 * idx - 1))
-      # prime!(ψ_R, siteind(ψ_R, 2 * idx))
-      prime!(ψ_R[2 * idx - 1], tags = "Site")
-      prime!(ψ_R[2 * idx], tags = "Site")
-      j₁, j₂ = siteind(ψ_R, 2 * idx - 1), siteind(ψ_R, 2 * idx)
-      @show j₁, j₂
-      println("")
-
-      T = ITensor()
-      for j in 1:length(tmp_ψ)
-        if j == 1
-          T = tmp_ψ[j] * ψ_R[j]
-        else
-          T *= tmp_ψ[j] * ψ_R[j]
-        end
-      end
-      # @show inds(tmp_tensor)
-
-      U, S, V = svd(T, i₁, j₁)
-      @show T ≈ U * S * V
-      # @show S
-      S[1, 1] = 1.0
-      S[2, 2] = 1.0
-      S[3, 3] = 1.0
-      S[4, 4] = 1.0
-      # @show S
-
-      updated_T = U * S * V
-      @show inds(updated_T)
-      optimization_gates[idx] = updated_T
       # @show optimization_gates[idx]
-
-      noprime!(ψ_R)
-    end
-
-    for idx in length(optimization_gates):-1:1
-      @show optimization_gates[idx]
       
       # Contract psi_L and the two-qubit gate to form a new MPS
       tmp_Gates = deepcopy(optimization_gates)
@@ -178,16 +136,94 @@ let
       println("")
 
       T = ITensor()
+      # for j in 1:length(tmp_ψ)
+      #   if j == 1
+      #     T = tmp_ψ[j] * ψ_R[j]
+      #   else
+      #     T *= tmp_ψ[j] * ψ_R[j]
+      #   end
+      # end
       for j in 1:length(tmp_ψ)
         if j == 1
-          T = tmp_ψ[j] * ψ_R[j]
+          T = tmp_ψ[j]
+          T *= ψ_R[j]
         else
-          T *= tmp_ψ[j] * ψ_R[j]
+          T *= tmp_ψ[j]
+          T *= ψ_R[j]
         end
       end
       # @show inds(tmp_tensor)
 
-      U, S, V = svd(T, i₁, j₁)
+      # U, S, V = svd(T, i₁, j₁)
+      U, S, V = svd(T, i₁, i₂)
+      @show T ≈ U * S * V
+      @show U 
+      println("")
+      @show S
+      println("")
+      @show V
+      println("")
+      
+      # @show S
+      S[1, 1] = 1.0
+      S[2, 2] = 1.0
+      S[3, 3] = 1.0
+      S[4, 4] = 1.0
+      # @show S
+
+      # updated_T = U * S * V
+      updated_T = dag(V) * S * dag(U)
+      @show inds(updated_T)
+      println("")
+      optimization_gates[idx] = updated_T
+      # @show optimization_gates[idx]
+
+      noprime!(ψ_R)
+    end
+
+    for idx in length(optimization_gates):-1:1
+      # @show optimization_gates[idx]
+      
+      # Contract psi_L and the two-qubit gate to form a new MPS
+      tmp_Gates = deepcopy(optimization_gates)
+      deleteat!(tmp_Gates, idx)
+      tmp_ψ = apply(tmp_Gates, ψ₀; cutoff=cutoff)
+      normalize!(tmp_ψ)
+      i₁, i₂ = siteind(tmp_ψ, 2 * idx - 1), siteind(tmp_ψ, 2 * idx)
+      # @show i₁, i₂
+      # println("")
+
+      # Set specific site indices to be primed
+      # prime!(ψ_R, siteind(ψ_R, 2 * idx - 1))
+      # prime!(ψ_R, siteind(ψ_R, 2 * idx))
+      prime!(ψ_R[2 * idx - 1], tags = "Site")
+      prime!(ψ_R[2 * idx], tags = "Site")
+      j₁, j₂ = siteind(ψ_R, 2 * idx - 1), siteind(ψ_R, 2 * idx)
+      # @show j₁, j₂
+      # println("")
+
+
+      T = ITensor()
+      # for j in 1:length(tmp_ψ)
+      #   if j == 1
+      #     T = tmp_ψ[j] * ψ_R[j]
+      #   else
+      #     T *= tmp_ψ[j] * ψ_R[j]
+      #   end
+      # end
+      for j in 1:length(tmp_ψ)
+        if j == 1
+          T = tmp_ψ[j]
+          T *= ψ_R[j]
+        else
+          T *= tmp_ψ[j]
+          T *= ψ_R[j]
+        end
+      end
+     
+
+      # U, S, V = svd(T, i₁, j₁)
+      U, S, V = svd(T, i₁, i₂)
       @show T ≈ U * S * V
       # @show S
       S[1, 1] = 1.0
@@ -196,28 +232,28 @@ let
       S[4, 4] = 1.0
       # @show S
 
-      updated_T = U * S * V
+      updated_T = dag(V) * S * dag(U)
+      # updated_T = U * S * V
       @show inds(updated_T)
+      println("")
       optimization_gates[idx] = updated_T
-      # @show optimization_gates[idx]
 
       noprime!(ψ_R)
     end
 
-    intermidiate_ψ = apply(optimization_gates, ψ₀; cutoff=cutoff)
-    normalize!(intermidiate_ψ)
-    cost_function[iteration] = real(inner(intermidiate_ψ, ψ_R))
-
-
-
-
-    reference_ψ = apply(gates, ψ₀; cutoff=cutoff)
-    normalize!(reference_ψ)
-    reference_cost_function[iteration] = real(inner(reference_ψ, ψ_R))
-
+    # Compute the cost function after each sweep
+    cost_function[iteration] = compute_cost_function(ψ₀, ψ_R, optimization_gates)
+    reference[iteration] = compute_cost_function(ψ₀, ψ_R, gates)
   end
 
   @show cost_function
-  @show reference_cost_function
+  @show reference 
+  
+  output_filename = "compilation_test_results.h5"
+  h5open(output_filename, "w") do file
+    write(file, "cost function", cost_function)
+    write(file, "reference", reference)
+  end
+  
   return
 end
