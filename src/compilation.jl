@@ -22,20 +22,21 @@ OMP_NUM_THREADS = 8
 @show BLAS.get_num_threads()
 
 
-const N = 8  # Total number of qubits
+const N = 10  # Total number of qubits
 const J₁ = 1.0
-const τ = 0.1
+const τ = 0.2
 const cutoff = 1e-10
-const nsweeps = 200
+const nsweeps = 100
 const time_machine = TimerOutput()  # Timing and profiling
 
 
 # Define a function to compute the cost function given two MPS and a set of unitaries
 function compute_cost_function(input_ψ_L::MPS, input_ψ_R::MPS, input_gates::Vector{ITensor})
-  tmp_ψ = apply(input_gates, input_ψ_L; cutoff=cutoff)
-  normalize!(tmp_ψ)
-  return real(inner(tmp_ψ, input_ψ_R))
+  intermediate_psi = apply(input_gates, input_ψ_L; cutoff=cutoff)
+  # normalize!(intermediate_psi)
+  return real(inner(intermediate_psi, input_ψ_R))
 end
+
 
 
 let
@@ -115,16 +116,28 @@ let
   cost_function, reference = Vector{Float64}(undef, nsweeps), Vector{Float64}(undef, nsweeps)
   for iteration in 1 : nsweeps
     for idx in 1 : length(optimization_gates)
-      # @show optimization_gates[idx]
+      # @show optimization_gates
       
       # Contract psi_L and the two-qubit gate to form a new MPS
       tmp_Gates = deepcopy(optimization_gates)
+      # if idx != 1
+      #   @show optimization_gates[idx - 1]
+      # end
+      gate₀ = tmp_Gates[idx]
+      # @show gate₀
+      @show length(tmp_Gates)
       deleteat!(tmp_Gates, idx)
+      @show length(tmp_Gates)
+      # @show gate₀ in tmp_Gates
+      # if idx != 1
+      #   @show optimization_gates[idx - 1] in tmp_Gates
+      # end
+
       tmp_ψ = apply(tmp_Gates, ψ₀; cutoff=cutoff)
-      normalize!(tmp_ψ)
+      # normalize!(tmp_ψ)
       i₁, i₂ = siteind(tmp_ψ, 2 * idx - 1), siteind(tmp_ψ, 2 * idx)
-      @show i₁, i₂
-      println("")
+      # @show i₁, i₂
+      # println("")
 
       # Set specific site indices to be primed
       # prime!(ψ_R, siteind(ψ_R, 2 * idx - 1))
@@ -132,37 +145,82 @@ let
       prime!(ψ_R[2 * idx - 1], tags = "Site")
       prime!(ψ_R[2 * idx], tags = "Site")
       j₁, j₂ = siteind(ψ_R, 2 * idx - 1), siteind(ψ_R, 2 * idx)
-      @show j₁, j₂
-      println("")
+      # @show j₁, j₂
+      # println("")
 
-      T = ITensor()
+      
+      # T = ITensor()
       # for j in 1:length(tmp_ψ)
       #   if j == 1
       #     T = tmp_ψ[j] * ψ_R[j]
       #   else
-      #     T *= tmp_ψ[j] * ψ_R[j]
+      #     T *= (tmp_ψ[j] * ψ_R[j])
       #   end
       # end
-      for j in 1:length(tmp_ψ)
+
+      # for j in 1:length(tmp_ψ)
+      #   if j == 1
+      #     T = tmp_ψ[j]
+      #     T *= ψ_R[j]
+      #   else
+      #     T *= tmp_ψ[j]
+      #     T *= ψ_R[j]
+      #   end
+      # end
+      # @show inds(T)
+     
+      #*****************************************************************************************************
+      # Compute the environment tensors using up and down parts
+      envL = ITensor(1)
+      for j in 1:(2 * idx - 2)
         if j == 1
-          T = tmp_ψ[j]
-          T *= ψ_R[j]
+          envL = tmp_ψ[j]
+          envL *= ψ_R[j]
         else
-          T *= tmp_ψ[j]
-          T *= ψ_R[j]
+          envL *= tmp_ψ[j]
+          envL *= ψ_R[j]
         end
       end
-      # @show inds(tmp_tensor)
 
+      envR = ITensor(1)
+      for j in N:-1:(2 * idx + 1)
+        if j == N
+          envR = tmp_ψ[j]
+          envR *= ψ_R[j]
+        else
+          envR *= tmp_ψ[j]
+          envR *= ψ_R[j]
+        end
+      end
+
+      T = ITensor()
+      T = envR * tmp_ψ[2 * idx - 1] * ψ_R[2 * idx - 1]
+      T *= tmp_ψ[2 * idx] * ψ_R[2 * idx] 
+      T *= envL
+      #*****************************************************************************************************
+      noprime!(ψ_R)
+
+      # @show T
+      # @show gate₀
+      @show inds(T)
+      @show inds(gate₀)
+      # tmpU, tmpS, tmpV = svd(T, i₁, i₂)
+      # T_transpose = dag(tmpV) * tmpS * dag(tmpU)
+      # @show real((T_transpose * gate₀))[1]
+      @show real((T * gate₀))[1]
+      @show compute_cost_function(ψ₀, ψ_R, optimization_gates)
+      # println("")
+
+      
       # U, S, V = svd(T, i₁, j₁)
       U, S, V = svd(T, i₁, i₂)
-      @show T ≈ U * S * V
-      @show U 
-      println("")
-      @show S
-      println("")
-      @show V
-      println("")
+      # @show T ≈ U * S * V
+      # @show U 
+      # println("")
+      # @show S
+      # println("")
+      # @show V
+      # println("")
       
       # @show S
       S[1, 1] = 1.0
@@ -172,13 +230,15 @@ let
       # @show S
 
       # updated_T = U * S * V
-      updated_T = dag(V) * S * dag(U)
+      # updated_T = dag(V) * S * dag(U)
+      updated_T = dag(U) * S * dag(V)
       @show inds(updated_T)
-      println("")
+      # println("")
+      # @show optimization_gates[idx] 
       optimization_gates[idx] = updated_T
+      # @show updated_T
       # @show optimization_gates[idx]
-
-      noprime!(ψ_R)
+      # @show compute_cost_function(ψ₀, ψ_R, optimization_gates)
     end
 
     for idx in length(optimization_gates):-1:1
@@ -188,7 +248,7 @@ let
       tmp_Gates = deepcopy(optimization_gates)
       deleteat!(tmp_Gates, idx)
       tmp_ψ = apply(tmp_Gates, ψ₀; cutoff=cutoff)
-      normalize!(tmp_ψ)
+      # normalize!(tmp_ψ)
       i₁, i₂ = siteind(tmp_ψ, 2 * idx - 1), siteind(tmp_ψ, 2 * idx)
       # @show i₁, i₂
       # println("")
@@ -220,11 +280,12 @@ let
           T *= ψ_R[j]
         end
       end
-     
+      # @show T
+      noprime!(ψ_R)
 
       # U, S, V = svd(T, i₁, j₁)
       U, S, V = svd(T, i₁, i₂)
-      @show T ≈ U * S * V
+      # @show T ≈ U * S * V
       # @show S
       S[1, 1] = 1.0
       S[2, 2] = 1.0
@@ -232,13 +293,12 @@ let
       S[4, 4] = 1.0
       # @show S
 
-      updated_T = dag(V) * S * dag(U)
+      updated_T = dag(U) * S * dag(V)
+      # updated_T = dag(V) * S * dag(U)
       # updated_T = U * S * V
-      @show inds(updated_T)
+      # @show inds(updated_T)
       println("")
       optimization_gates[idx] = updated_T
-
-      noprime!(ψ_R)
     end
 
     # Compute the cost function after each sweep
@@ -249,7 +309,7 @@ let
   @show cost_function
   @show reference 
   
-  output_filename = "compilation_test_results.h5"
+  output_filename = "compilation_N$(N)_v3.h5"
   h5open(output_filename, "w") do file
     write(file, "cost function", cost_function)
     write(file, "reference", reference)
