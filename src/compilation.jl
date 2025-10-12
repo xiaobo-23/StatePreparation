@@ -17,16 +17,17 @@ MKL_NUM_THREADS = 8
 OPENBLAS_NUM_THREADS = 8
 OMP_NUM_THREADS = 8
 
+
 # Monitor the number of threads used by BLAS and LAPACK
 @show BLAS.get_config()
 @show BLAS.get_num_threads()
 
 
-const N = 10  # Total number of qubits
+const N = 4  # Total number of qubits
 const J₁ = 1.0
 const τ = 0.2
 const cutoff = 1e-10
-const nsweeps = 100
+const nsweeps = 2
 const time_machine = TimerOutput()  # Timing and profiling
 
 
@@ -120,17 +121,15 @@ let
       
       # Contract psi_L and the two-qubit gate to form a new MPS
       tmp_Gates = deepcopy(optimization_gates)
-      # if idx != 1
-      #   @show optimization_gates[idx - 1]
-      # end
       gate₀ = tmp_Gates[idx]
       # @show gate₀
-      @show length(tmp_Gates)
+      # @show length(tmp_Gates)
       deleteat!(tmp_Gates, idx)
-      @show length(tmp_Gates)
+      # @show length(tmp_Gates)
       # @show gate₀ in tmp_Gates
       # if idx != 1
       #   @show optimization_gates[idx - 1] in tmp_Gates
+      #   @show optimization_gates[idx - 1]
       # end
 
       tmp_ψ = apply(tmp_Gates, ψ₀; cutoff=cutoff)
@@ -207,13 +206,16 @@ let
       # tmpU, tmpS, tmpV = svd(T, i₁, i₂)
       # T_transpose = dag(tmpV) * tmpS * dag(tmpU)
       # @show real((T_transpose * gate₀))[1]
-      @show real((T * gate₀))[1]
+      @show typeof(tmp_Gates), typeof(gate₀)
+      gates_set = push!(deepcopy(tmp_Gates), gate₀)
+      @show real((dag(T) * gate₀))[1]
       @show compute_cost_function(ψ₀, ψ_R, optimization_gates)
+      @show compute_cost_function(ψ₀, ψ_R, gates_set)
       # println("")
 
       
-      # U, S, V = svd(T, i₁, j₁)
-      U, S, V = svd(T, i₁, i₂)
+      # U, S, V = svd(T, (i₁, j₁))
+      U, S, V = svd(T, (i₁, i₂))
       # @show T ≈ U * S * V
       # @show U 
       # println("")
@@ -229,13 +231,15 @@ let
       S[4, 4] = 1.0
       # @show S
 
-      # updated_T = U * S * V
-      # updated_T = dag(V) * S * dag(U)
-      updated_T = dag(U) * S * dag(V)
-      @show inds(updated_T)
-      # println("")
-      # @show optimization_gates[idx] 
+      
+      # # updated_T = U * S * V
+      updated_T = dag(V) * S * dag(U)
+      # updated_T = dag(U) * S * dag(V)
+      # @show inds(updated_T)
+      # # println("")
+      # # @show optimization_gates[idx] in
       optimization_gates[idx] = updated_T
+      # @show dag(updated_T) * updated_T
       # @show updated_T
       # @show optimization_gates[idx]
       # @show compute_cost_function(ψ₀, ψ_R, optimization_gates)
@@ -263,7 +267,7 @@ let
       # println("")
 
 
-      T = ITensor()
+      # T = ITensor()
       # for j in 1:length(tmp_ψ)
       #   if j == 1
       #     T = tmp_ψ[j] * ψ_R[j]
@@ -271,6 +275,8 @@ let
       #     T *= tmp_ψ[j] * ψ_R[j]
       #   end
       # end
+      
+      T = ITensor()
       for j in 1:length(tmp_ψ)
         if j == 1
           T = tmp_ψ[j]
@@ -283,8 +289,8 @@ let
       # @show T
       noprime!(ψ_R)
 
-      # U, S, V = svd(T, i₁, j₁)
-      U, S, V = svd(T, i₁, i₂)
+      # U, S, V = svd(T, (i₁, j₁))
+      U, S, V = svd(T, (i₁, i₂))
       # @show T ≈ U * S * V
       # @show S
       S[1, 1] = 1.0
@@ -292,13 +298,14 @@ let
       S[3, 3] = 1.0
       S[4, 4] = 1.0
       # @show S
-
-      updated_T = dag(U) * S * dag(V)
-      # updated_T = dag(V) * S * dag(U)
+      
       # updated_T = U * S * V
-      # @show inds(updated_T)
-      println("")
+      updated_T = dag(V) * S * dag(U)
       optimization_gates[idx] = updated_T
+      # @show dag(updated_T) * updated_T
+      # @show inds(updated_T)
+      
+      println("")
     end
 
     # Compute the cost function after each sweep
