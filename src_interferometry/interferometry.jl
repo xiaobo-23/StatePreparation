@@ -83,7 +83,7 @@ let
   
   #***************************************************************************************************************
   #***************************************************************************************************************
-  # Construct the Kitaev interaction and the hopping terms
+  # Construct the Kitaev interaction and electron hoppings 
   os = OpSum()
   xbond::Int = 0
   ybond::Int = 0
@@ -135,7 +135,7 @@ let
   if xbond + ybond + zbond != number_of_bonds
     error("The number of bonds in the Hamiltonian is not correct!")
   end
-
+  println("")
  
   #***************************************************************************************************************
   #***************************************************************************************************************
@@ -223,7 +223,9 @@ let
   println(repeat("*", 200))
   println("")
 
-
+  
+  #***************************************************************************************************************
+  #***************************************************************************************************************
   # # Add the Zeeman terms into the Hamiltonian, which breaks the integrability
   # if h > 1e-8
   #   for site in lattice_sites
@@ -254,50 +256,29 @@ let
   # #***************************************************************************************************************  
   
   
-  # #*****************************************************************************************************
-  # #*****************************************************************************************************  
-  # # Set up the initial MPS and parameters for the DMRG simulation
-  # #*****************************************************************************************************
-  # #*****************************************************************************************************
+  #***************************************************************************************************************
+  #***************************************************************************************************************
+  # Set up the initial MPS and parameters for the DMRG simulation
 
-  # # Increase the maximum dimension of Krylov space used to locally solve the eigenvalues problem.
-  # # sites = siteinds("tJ", N; conserve_qns=false)
-  # sites = siteinds("tJ", N; conserve_nf=true)
-  # H = MPO(os, sites)
-
-  # # Initialize wavefunction to a random MPS of bond-dimension 10 with same quantum 
-  # # numbers as `state`
-  # # state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
-  # state = []
-  # hole_idx = 11
-  # for (idx, n) in enumerate(1 : N)
-  #   if n == hole_idx
-  #     push!(state, "Emp")
-  #   else
-  #     if isodd(idx)
-  #       push!(state, "Up")
-  #     else
-  #       push!(state, "Dn")
-  #     end
-  #   end
-  # end
-  # @show state
-  # ψ₀ = randomMPS(sites, state, 10)
+  # Increase the maximum dimension of Krylov space used to locally solve the eigenvalues problem.
+  sites = siteinds("S=1/2", N)
+  state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
   
-  # # Set up the parameters including bond dimensions and truncation error
-  # nsweeps = 1
-  # maxdim  = [20, 60, 100, 500, 800, 1000, 1500, 3000]
-  # cutoff  = [1E-10]
-  # eigsolve_krylovdim = 50
+  # Initialize the wavefunction as a random MPS and set up the Hamiltonian as an MPO
+  ψ₀ = randomMPS(sites, state, 10)
+  H = MPO(os, sites)
   
-  # # Add noise terms to prevent DMRG from getting stuck in a local minimum
-  # # noise = [1E-6, 1E-7, 1E-8, 0.0]
-  # #*****************************************************************************************************
-  # #*****************************************************************************************************
-
-
-  # #*****************************************************************************************************
-  # #*****************************************************************************************************
+  
+  # Set up the parameters including bond dimensions and truncation error
+  nsweeps = 2
+  maxdim  = [20, 60, 100, 500, 800, 1000, 1500, 3000]
+  cutoff  = [1E-10]
+  eigsolve_krylovdim = 50
+  
+  
+  # Add noise terms to prevent DMRG from getting stuck in a local minimum
+  # noise = [1E-6, 1E-7, 1E-8, 0.0]
+  
   # # Measure one-point functions of the initial state
   # Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
   # Splus₀  = expect(ψ₀, "S+", sites = 1 : N)
@@ -311,30 +292,19 @@ let
   # @show n₀
   # println("")
 
-  # # Check if the system is properly doped before running the DMRG simulation
-  # if abs(N - sum(n₀) - 1) > 1E-6
-  #   error("The system is not properly doped!")
-  # end
-  # #*****************************************************************************************************
-  # #*****************************************************************************************************
-
-
-  # #******************************************************************************************************
-  # #******************************************************************************************************
-  # # Run the DMRG simulation and obtain the ground state wavefunction
-  # #******************************************************************************************************
-  # #******************************************************************************************************
-
-  # # Construct a custom observer and stop the DMRG calculation early if criteria are met
-  # # custom_observer = DMRGObserver(; energy_tol=1E-9, minsweeps=2, energy_type=Float64)
-  # custom_observer = CustomObserver()
-  # @show custom_observer.etolerance
-  # @show custom_observer.minsweeps
-  # @timeit time_machine "dmrg simulation" begin
-  #   energy, ψ = dmrg(H, ψ₀; nsweeps, maxdim, cutoff, eigsolve_krylovdim, observer = custom_observer)
-  # end
-  # #*****************************************************************************************************
-  # #*****************************************************************************************************
+  #***************************************************************************************************************
+  #***************************************************************************************************************
+  # Run the DMRG simulation and obtain the ground state wavefunction  
+  # Construct a custom observer and stop the DMRG calculation early if criteria are met
+  # custom_observer = DMRGObserver(; energy_tol=1E-9, minsweeps=2, energy_type=Float64)
+  custom_observer = CustomObserver()
+  @show custom_observer.etolerance
+  @show custom_observer.minsweeps
+  @timeit time_machine "dmrg simulation" begin
+    energy, ψ = dmrg(H, ψ₀; nsweeps, maxdim, cutoff, eigsolve_krylovdim, observer = custom_observer)
+  end
+  #***************************************************************************************************************
+  #***************************************************************************************************************
 
   # #******************************************************************************************************
   # #******************************************************************************************************
