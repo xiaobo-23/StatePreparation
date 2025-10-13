@@ -41,9 +41,11 @@ specifying just the numbers of sites
 the (x,y) coordinates of the two sites and
 an optional type string.
 """
+
 function LatticeBond(s1::Int, s2::Int)
   return LatticeBond(s1, s2, 0.0, 0.0, 0.0, 0.0, "")
 end
+
 
 function LatticeBond(
   s1::Int, s2::Int, x1::Real, y1::Real, x2::Real, y2::Real, bondtype::String=""
@@ -51,6 +53,7 @@ function LatticeBond(
   cf(x) = convert(Float64, x)
   return LatticeBond(s1, s2, cf(x1), cf(y1), cf(x2), cf(y2), bondtype)
 end
+
 
 """
 Lattice is an alias for Vector{LatticeBond}
@@ -71,44 +74,55 @@ const Lattice = Vector{LatticeBond}
 #     `yperiodic=true`.
 # """
 
-function honeycomb_lattice_rings(Nx::Int, Ny::Int; yperiodic=false)::Lattice
+function honeycomb_lattice_interferometry(Nx::Int, Ny::Int; yperiodic=false)::Lattice
 	"""
-		Using the ring ordering scheme
-		Nx needs to be an even number
+		Setting up the interferometry geometry
+		Nx is the number of columns and is an even number 
 	"""
+	# The default is open boundary condition along the x direction and periodic boundary condition along the y direction	
 	yperiodic = yperiodic && (Ny > 2)
-	N = Nx * Ny
-	Nbond = trunc(Int, 3/2 * N) - Ny + (yperiodic ? 0 : -trunc(Int, Nx / 2))
-	@show Nbond
+	if isodd(Nx)
+		error("Nx needs to be an even number.")
+	end
+
+	# Set up the number of sites and the number of bonds
+	Nsite = Nx * Ny
+	Nbond = trunc(Int, 3/2 * Nsite) - Ny + (yperiodic ? 0 : -trunc(Int, Nx / 2))
   
-  	latt = Lattice(undef, Nbond)
+	# Set up the lattice as an tuple of bonds
+	latt = Lattice(undef, Nbond)
   	b = 0
-		for n in 1:N
-			x = div(n - 1, Ny) + 1
-			y = mod(n - 1, Ny) + 1
+	for n in 1:Nsite
+		x = div(n - 1, Ny) + 1
+		y = mod(n - 1, Ny) + 1
 
-			# x-direction bonds for A sublattice
-			if mod(x, 2) == 0 && x < Nx
-				latt[b += 1] = LatticeBond(n, n + Ny)
-			end
+		# horizontal bonds 
+		if iseven(x) && x < Nx
+			latt[b += 1] = LatticeBond(n, n + Ny)
+		end
 
-			# bonds for B sublattice
-			if Ny > 1
-				if mod(x, 2) == 1 && x < Nx
-					# @show latt
-					latt[b += 1] = LatticeBond(n, n + Ny)
-					if y != 1
-						latt[b += 1] = LatticeBond(n, n + Ny - 1)
-					end
+		# bonds with +/- 60 degree angles
+		if isodd(x) && x == 1
+			latt[b += 1] = LatticeBond(n, n + Ny)
+			if y == Ny 
+				if yperiodic
+					latt[b += 1] = LatticeBond(n, n + 1)
 				end
-			
-				# periodic bonds 
-				if mod(x, 2) == 1 && yperiodic && y == 1
+			else
+				latt[b += 1] = LatticeBond(n, n + Ny + 1)
+			end
+		end
+
+		if isodd(x) && x != 1
+			latt[b += 1] = LatticeBond(n, n + Ny)
+			if y == 1
+				if yperiodic
 					latt[b += 1] = LatticeBond(n, n + 2 * Ny - 1)
 				end
+			else
+				latt[b += 1] = LatticeBond(n, n + Ny - 1)
 			end
-
-		# @show latt
+		end
 	end
 
 	return latt
@@ -466,7 +480,7 @@ function honeycomb_armchair_wedge(Nx::Int, Ny::Int; yperiodic=false)
 	for n in 1 : N
 		x = div(n - 1, Ny) + 1
 		y = mod(n - 1, Ny) + 1
-		@show n, x, y
+		# @show n, x, y
 		
 		if x == 1
 			if mod(y, 2) == 1
@@ -546,7 +560,7 @@ function honeycomb_twist_wedge(Nx::Int, Ny::Int; yperiodic=false)
 		y = mod(n - 1, Ny) + 1
 
 		if isodd(x)
-			@show n, x, y
+			# @show n, x, y
 			if x == 1
 				if y != 1
 					wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
@@ -564,7 +578,7 @@ function honeycomb_twist_wedge(Nx::Int, Ny::Int; yperiodic=false)
 		end
 
 		if iseven(x)
-			@show n, x, y
+			# @show n, x, y
 			if x == Nx
 				if y != Ny  
 					wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
