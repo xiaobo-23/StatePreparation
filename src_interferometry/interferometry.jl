@@ -49,19 +49,32 @@ let
   # Scaling factor for the Kitaev interaction to set up the interferometry
   α = 1E-6
 
-  # Set up the honeycomb lattice with proper boundary conditions
+  
+  # Set up the bonds on a honeycomb lattice for the two-spin interactions
+  println(repeat("*", 200))
+  println("Setting up the bonds on a honeycomb lattice")
   lattice = honeycomb_lattice_interferometry(Nx, Ny; yperiodic=true)
   number_of_bonds = length(lattice)
   @show number_of_bonds
   for (idx, bond) in enumerate(lattice)
     @show bond.s1, bond.s2
   end
+  println(repeat("*", 200))
+  println("")
 
-  # Construct the wedges in order to set up three-body spin interactions
-  wedge = honeycomb_twist_wedge(Nx, Ny; yperiodic=true)
+  
+  # Set up the wedge terms on a honeycomb lattice for the three-spin interactions
+  println(repeat("*", 200))
+  println("Setting up the wedgeds on a honeycomb lattice")
+  wedge = honeycomb_wedge_interferometry(Nx, Ny; yperiodic=true)
   number_of_wedges = length(wedge)
-  # @show number_of_wedges
-  # @show wedge 
+  @show number_of_wedges
+  for (idx, tmp) in enumerate(wedge)
+    @show tmp.s1, tmp.s2, tmp.s3
+  end 
+  println(repeat("*", 200))
+  println("")
+
 
   # Remove sites to set up the interferometry
   empty_sites = Set{Int64}([])
@@ -72,15 +85,12 @@ let
   #***************************************************************************************************************
   # Construct the Kitaev interaction and the hopping terms
   os = OpSum()
-  xbond = 0
-  ybond = 0
-  zbond = 0
+  xbond::Int = 0
+  ybond::Int = 0
+  zbond::Int = 0
   
-  println("")
-  println()
   println(repeat("*", 200))
   println("Setting up two-body interactions in the Hamiltonian")
-  println(repeat("*", 200))
 
   for b in lattice
     # Set up the hopping terms for spin-up and spin-down electrons
@@ -120,93 +130,108 @@ let
     end
   end
   
-  # Check the number of bonds in the Hamiltonian 
-  total_bonds = trunc(Int, 3/2 * N) - Ny + (y_periodic ? 0 : -trunc(Int, N / 2))
-  @show xbond, ybond, zbond, total_bonds
-  if xbond + ybond + zbond != total_bonds
+  # Check whether number of bonds is correct 
+  @show xbond, ybond, zbond, number_of_bonds
+  if xbond + ybond + zbond != number_of_bonds
     error("The number of bonds in the Hamiltonian is not correct!")
   end
 
+ 
+  #***************************************************************************************************************
+  #***************************************************************************************************************
+  # Construct the three-spin interaction terms
+  println(repeat("*", 200))
+  println("Setting up three-body interactions in the Hamiltonian")
   
-  # # Set Up the three-spin interactions in the Hamiltonian
-  # count_wedge = 0
-  # for w in wedge
-  #   @show w.s1, w.s2, w.s3
-  #   x_coordinate = div(w.s2 - 1, Ny) + 1
-  #   y_coordinate = mod(w.s2 - 1, Ny) + 1
+  wedge_count::Int = 0
+  for w in wedge
+    # Use the second term of each tuple as the anchor point to determine the coordinates of the wedge
+    x_coordinate = div(w.s2 - 1, Ny) + 1
+    y_coordinate = mod(w.s2 - 1, Ny) + 1
 
-  #   if abs(w.s1 - w.s2) == abs(w.s2 - w.s3)
-  #     if isodd(x_coordinate)
-  #       # os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
-  #       os .+=  0.5im * κ, "Sz", w.s1, "S-", w.s2, "Sx", w.s3 
-  #       os .+= -0.5im * κ, "Sz", w.s1, "S+", w.s2, "Sx", w.s3
-  #       @info "Added three-spin term" term = ("Sz", w.s1, "Sy", w.s2, "Sx", w.s3)
-  #     else
-  #       # os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3
-  #       os .+=  0.5im * κ, "Sx", w.s1, "S-", w.s2, "Sz", w.s3
-  #       os .+= -0.5im * κ, "Sx", w.s1, "S+", w.s2, "Sz", w.s3
-  #       @info "Added three-spin term" term = ("Sx", w.s1, "Sy", w.s2, "Sz", w.s3)
-  #     end
-  #     count_wedge += 1
-  #   end
+    # Set up the three-spin interaction terms for the odd columns
+    if isodd(x_coordinate)
+      if x_coordinate == 1
+        if y_coordinate != Ny 
+          os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3)
+        else
+          os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
+        end
+        wedge_count += 1
+      else
+        if abs(w.s1 - w.s2) == abs(w.s2 - w.s3) == Ny 
+          os .+= κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
+          @info "Added three-spin term" term = ("Sz", w.s1, "Sx", w.s2, "Sy", w.s3)
+          wedge_count += 1
+        elseif abs(w.s3 - w.s1) == 1
+          os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3)
+          wedge_count += 1
+        elseif abs(w.s3 - w.s1) == Ny - 1
+          os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
+          wedge_count += 1
+        else
+          os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
+          @info "Added three-spin term" term = ("Sz", w.s1, "Sy", w.s2, "Sx", w.s3)
+          wedge_count += 1
+        end
+      end
+    end
 
-  #   if (abs(w.s1 - w.s2) == 1 || abs(w.s1 - w.s2) == 2) && abs(w.s2 - w.s3) == 3
-  #     if isodd(x_coordinate)
-  #       # os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
-  #       os .+=  0.5im * κ, "S-", w.s1, "Sz", w.s2, "Sx", w.s3
-  #       os .+= -0.5im * κ, "S+", w.s1, "Sz", w.s2, "Sx", w.s3
-  #       @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
-  #       count_wedge += 1
-  #     else
-  #       # os .+= κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
-  #       os .+=  0.5im * κ, "S-", w.s1, "Sx", w.s2, "Sz", w.s3
-  #       os .+= -0.5im * κ, "S+", w.s1, "Sx", w.s2, "Sz", w.s3
-  #       @info "Added three-spin term" term = ("Sy", w.s1, "Sx", w.s2, "Sz", w.s3)
-  #       count_wedge += 1
-  #     end
-  #   end
 
-  #   if abs(w.s1 - w.s2) == 3 && (abs(w.s2 - w.s3) == 1 || abs(w.s2 - w.s3) == 2)
-  #     if iseven(x_coordinate)
-  #       # os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
-  #       os .+=  0.5im * κ, "Sx", w.s1, "Sz", w.s2, "S-", w.s3
-  #       os .+= -0.5im * κ, "Sx", w.s1, "Sz", w.s2, "S+", w.s3
-  #       @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3)
-  #       count_wedge += 1
-  #     else
-  #       # os .+= κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
-  #       os .+=  0.5im * κ, "Sz", w.s1, "Sx", w.s2, "S-", w.s3
-  #       os .+= -0.5im * κ, "Sz", w.s1, "Sx", w.s2, "S+", w.s3
-  #       @info "Added three-spin term" term = ("Sz", w.s1, "Sx", w.s2, "Sy", w.s3)
-  #       count_wedge += 1
-  #     end
+    # Set up the three-spin interaction terms for the even columns
+    if iseven(x_coordinate)
+      if x_coordinate == Nx 
+        if abs(w.s3 - w.s1) == 1
+          os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
+        else
+          os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3)
+        end
+        wedge_count += 1
+      else
+        if abs(w.s3 - w.s2) == abs(w.s2 - w.s1) == Ny
+          os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3 
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sy", w.s2, "Sz", w.s3)
+          wedge_count += 1
+        elseif abs(w.s3 - w.s1) == 1
+          os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
+          wedge_count += 1
+        elseif abs(w.s3 - w.s1) == Ny - 1
+          os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3)
+          wedge_count += 1
+        else
+          os .+= κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sx", w.s2, "Sz", w.s3)
+          wedge_count += 1
+        end
+      end
+    end
+  end
+  
+
+  # Check whether the number of three-spin interaction terms is correct 
+  if wedge_count != 3 * N - 2 * 2 * Ny
+    error("The number of three-spin interaction terms is incorrect!")
+  end
+  println(repeat("*", 200))
+  println("")
+
+
+  # # Add the Zeeman terms into the Hamiltonian, which breaks the integrability
+  # if h > 1e-8
+  #   for site in lattice_sites
+  #     os .+= -h, "Sx", site
+  #     os .+= -h, "Sy", site
+  #     os .+= -h, "Sz", site
   #   end
   # end
-  
-  # # @show count_wedge, 3 * N - 4 * Ny - 2
-  # if count_wedge != 3 * N - 4 * Ny - 2
-  #   error("The number of three-spin interactions is not correct!")
-  # end
-  
-  
-  # # Add edge chemical potentiial to avoid the hole being trapped in the edge
-  # if abs(P) > 1e-8
-  #   for site in edge_sites
-  #     os .+= P, "Ntot", site
-  #     @info "Added edge chemical potential" site=site P=P
-  #   end
-  # end
-  
-
-  # # # Add the Zeeman coupling of the spins to a magnetic field applied in [111] direction, which breaks the integrability
-  # # if h > 1e-8
-  # #   for site in lattice_sites
-  # #     os .+= -h, "Sx", site
-  # #     os .+= -0.5h, "iS-", site
-  # #     os .+=  0.5h, "iS+", site
-  # #     os .+= -h, "Sz", site
-  # #   end
-  # # end
 
 
   # # Set up the loop operators and loop indices 
@@ -226,7 +251,6 @@ let
   # ]
   # plaquette_indices = PlaquetteList_RightTwist(Nx_unit, Ny_unit, "rings", false)
   # @show plaquette_indices
-  # #***************************************************************************************************************
   # #***************************************************************************************************************  
   
   

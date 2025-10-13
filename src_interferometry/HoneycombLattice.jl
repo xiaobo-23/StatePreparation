@@ -188,58 +188,6 @@ function honeycomb_lattice_armchair(Nx::Int, Ny::Int; yperiodic=false)::Lattice
 end
 
 
-
-function honeycomb_lattice_rings_pbc(Nx::Int, Ny::Int; yperiodic=false)::Lattice
-	"""
-	  Using the ring ordering scheme
-	  Nx needs to be an even number
-	"""
-	yperiodic = yperiodic && (Ny > 2)
-	N = Nx * Ny
-	Nbond = trunc(Int, 3/2 * N) + (yperiodic ? 0 : -trunc(Int, Nx / 2))
-	@show Nbond
-	
-	latt = Lattice(undef, Nbond)
-	b = 0
-	for n in 1:N
-		x = div(n - 1, Ny) + 1
-		y = mod(n - 1, Ny) + 1
-		# @show Nx, Ny, x, y, b
-  
-	  	# x-direction bonds for A sublattice
-		if mod(x, 2) == 0 && x < Nx
-			latt[b += 1] = LatticeBond(n, n + Ny)
-		end
-  
-		# bonds for B sublattice
-		if Ny > 1
-			if mod(x, 2) == 1 && x < Nx
-				# @show latt
-				latt[b += 1] = LatticeBond(n, n + Ny)
-				if y != 1
-					latt[b += 1] = LatticeBond(n, n + Ny - 1)
-				end
-			end
-
-			# periodic bonds along the x direction
-			if mod(x, 2) == 1 && x == 1
-				# latt[b += 1] = LatticeBond(n, n + (Nx - 1) * Ny)
-				latt[b += 1] = LatticeBond(n + (Nx - 1) * Ny, n)
-			end
-
-			# periodic bonds along the y direction
-			if mod(x, 2) == 1 && yperiodic && y == 1
-				latt[b += 1] = LatticeBond(n, n + 2 * Ny - 1)
-			end
-		end
-	
-	# @show latt
-	end
-
-	return latt
-end
-
-
 function honeycomb_lattice_rings_right_twist(Nx::Int, Ny::Int; yperiodic=false)::Lattice
 	"""
 	  Using the ring ordering scheme
@@ -281,149 +229,6 @@ function honeycomb_lattice_rings_right_twist(Nx::Int, Ny::Int; yperiodic=false):
 	return latt
 end
 
-
-
-## 07/23/2024
-function honeycomb_lattice_rings_reorder(Nx::Int, Ny::Int; yperiodic=false)::Lattice
-	"""
-		Using the ring ordering scheme
-		Nx needs to be an even number
-	"""
-	yperiodic = yperiodic && (Ny > 2)
-	N = Nx * Ny
-	Nbond = trunc(Int, 3/2 * N) - Ny + (yperiodic ? 0 : -trunc(Int, Nx / 2))
-	# @show Nbond
-  
-  	latt = Lattice(undef, Nbond)
-  	b = 0
-	for n in 1:N
-		x = div(n - 1, Ny) + 1
-		if mod(x, 2) == 0
-			seed_position = Ny - mod(trunc(Int, x / 2) - 1, Ny)
-			y = mod(seed_position + mod(n - 1, Ny), Ny)
-			if y == 0
-				y = Ny
-			end
-			# @show n, x, y, seed_position
-		elseif mod(x, 2) == 1 && x > 1 
-			seed_position = Ny - mod(trunc(Int, (x - 1) / 2) - 1, Ny)
-			y = mod(seed_position + mod(n - 1, Ny), Ny)
-			if y == 0
-				y = Ny
-			end
-			# @show n, x, y, seed_position
-		else
-			y = mod(n - 1, Ny) + 1
-			# @show n, x, y
-		end
-
-		# x-direction bonds for A sublattice
-		if mod(x, 2) == 0 && x < Nx
-			@show n, n + Ny
-			latt[b += 1] = LatticeBond(n, n + Ny)
-		end
-
-		# bonds for B sublattice
-		if Ny > 1
-			if mod(x, 2) == 1 && x < Nx
-				@show n, n + Ny
-				latt[b += 1] = LatticeBond(n, n + Ny)
-				if n == Ny || mod(n - Ny, 2 * Ny) == 0
-					@show n, n + 1
-					latt[b += 1] = LatticeBond(n, n + 1)
-				else
-					@show n, n + Ny + 1
-					latt[b += 1] = LatticeBond(n, n + Ny + 1)
-				end
-			end
-		end
-	# @show latt
-	end
-
-	return latt
-end
-
-
-
-function honeycomb_lattice_Cstyle(Nx::Int, Ny::Int; yperiodic=false)::Lattice
-  """
-	Using the C-style ordering scheme
-	Nx needs to be an even number
-  """
-	yperiodic = yperiodic && (Ny > 2)
-	N = Nx * Ny
-	Nbond = trunc(Int, 3/2 * N) - Ny + (yperiodic ? 0 : -trunc(Int, Nx / 2))
-	@show Nbond
-  
-	latt = Lattice(undef, Nbond)
-	b = 0
-	for n in 1:N
-		tmp = div(n - 1, 2 * Ny)
-		x = 2 * tmp + mod(n - 1, 2) + 1
-		y = mod(div(n - 1, 2), Ny) + 1
-		# @show n, x, y
-
-		# x-direction bonds for A sublattice
-		if mod(x, 2) == 0 && x < Nx
-			latt[b += 1] = LatticeBond(n, n + 2 * Ny - 1)
-			# @show n, x, y, b
-		end
-
-		# bonds for B sublattice
-		if Ny > 1
-			if mod(x, 2) == 1 && x < Nx
-				# @show latt
-				latt[b += 1] = LatticeBond(n, n + 1)
-				if y != 1
-					latt[b += 1] = LatticeBond(n, n - 1)
-				end
-			end
-
-			# periodic bonds 
-			if mod(x, 2) == 1 && yperiodic && y == 1
-				latt[b += 1] = LatticeBond(n, n + 2 * Ny - 1)
-			end
-		end
-	end
-	# @show latt
-	return latt
-end
-
-
-# 1/22/2024
-# Turn off interactions on selected bonds and benchmark against the one-dimensional DRMG result
-function honeycomb_lattice_rings_map_to_1d_chains(Nx::Int, Ny::Int)::Lattice
-	"""
-		Using the ring ordering scheme 
-		Nx needs to be an even number
-	"""
-
-	N = Nx * Ny
-	Nbond = N - 1
-	
-	latt = Lattice(undef, Nbond)
-	b = 0
-	for n in 1:N
-		x = div(n - 1, Ny) + 1
-		y = mod(n - 1, Ny) + 1
-		
-		# Use the ring ordering scheme to set up an one-dimensional chain
-		if Ny > 1 && n < N
-			if mod(x, 2) == 1 && x < Nx
-				latt[b += 1] = LatticeBond(n, n + Ny)
-				if y != 1
-					latt[b += 1] = LatticeBond(n, n + Ny - 1)
-				end
-			end
-
-			if mod(x, 2) == 0 && y == Ny
-				latt[b += 1] = LatticeBond(n, n + 1)
-			end
-		end
-	end
-
-	return latt
-end
 
 
 
@@ -540,60 +345,70 @@ function honeycomb_armchair_wedge(Nx::Int, Ny::Int; yperiodic=false)
 end
 
 
+
 # 05/21/2025
 # Implement the wedge object to introduce the three-body interaction on the XC geometry
-function honeycomb_twist_wedge(Nx::Int, Ny::Int; yperiodic=false)
+function honeycomb_wedge_interferometry(Nx::Int, Ny::Int; yperiodic=false)
 	"""
 		Use the XC geometry with a twist
 	"""
 	yperiodic = yperiodic && (Ny > 2)
-	N = Nx * Ny									# Number of sites
-	Nwedge = 3 * Nx * Ny - 2 * 2 * Ny - 2		# Number of wedges
-	@show Nwedge
-
+	Nsite  = Nx * Ny							# Number of lattice sites
+	Nwedge = 3 * Nx * Ny  - 2 * 2 * Ny          # Number of lattice wedges
 	wedge = Vector{WedgeBond}(undef, Nwedge)
-	# wedge = Wedge(undef, Nwedge)
 
 	b = 0
-	for n in 1 : N
+	for n in 1 : Nsite
 		x = div(n - 1, Ny) + 1
 		y = mod(n - 1, Ny) + 1
 
-		if isodd(x)
-			# @show n, x, y
-			if x == 1
-				if y != 1
-					wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
-				end
-			else
-				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
-				if y == 1
-					wedge[b += 1] = WedgeBond(n - Ny, n, n - 1)
-					wedge[b += 1] = WedgeBond(n - 1, n, n + Ny)
-				else
-					wedge[b += 1] = WedgeBond(n - Ny, n, n + 2)
-					wedge[b += 1] = WedgeBond(n + 2, n, n + Ny)
-				end
-			end
-		end
-
 		if iseven(x)
-			# @show n, x, y
-			if x == Nx
-				if y != Ny  
+			if x == 2
+				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+				if y != 1
+					wedge[b += 1] = WedgeBond(n - Ny - 1, n, n + Ny)
+					wedge[b += 1] = WedgeBond(n - Ny - 1, n, n - Ny)
+				else
+					wedge[b += 1] = WedgeBond(n - 1, n, n + Ny)
+					wedge[b += 1] = WedgeBond(n - Ny, n, n - 1)
+				end
+			elseif x == Nx 
+				if y == Ny
+					wedge[b += 1] = WedgeBond(n - 2 * Ny + 1, n, n - Ny)
+				else
 					wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
 				end
 			else
 				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
 				if y == Ny
-					wedge[b += 1] = WedgeBond(n - Ny, n, n + 1)
-					wedge[b += 1] = WedgeBond(n + 1, n, n + Ny)
+					wedge[b += 1] = WedgeBond(n - 2 * Ny + 1, n, n - Ny)
+					wedge[b += 1] = WedgeBond(n - 2 * Ny + 1, n, n + Ny)
 				else
 					wedge[b += 1] = WedgeBond(n - Ny, n, n - Ny + 1)
 					wedge[b += 1] = WedgeBond(n - Ny + 1, n, n + Ny)
 				end
 			end
 		end
+
+		
+		if isodd(x)
+			if x == 1
+				if y != Ny 
+					wedge[b += 1] = WedgeBond(n + Ny, n, n + Ny + 1)
+				else
+					wedge[b += 1] = WedgeBond(n + 1, n, n + Ny)
+				end
+			else
+				wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny)
+				if y != 1 
+					wedge[b += 1] = WedgeBond(n - Ny, n, n + Ny - 1)
+					wedge[b += 1] = WedgeBond(n + Ny - 1, n, n + Ny)
+				else
+					wedge[b += 1] = WedgeBond(n - Ny, n, n + 2 * Ny - 1)
+					wedge[b += 1] = WedgeBond(n + Ny, n, n + 2 * Ny - 1)
+				end
+			end
+		end		
 	end
 
 	# @show wedge
