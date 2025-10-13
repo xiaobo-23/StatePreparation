@@ -70,23 +70,25 @@ let
   
   #***************************************************************************************************************
   #***************************************************************************************************************
-  # Construct the Hamiltonian as an MPO 
   # Construct the Kitaev interaction and the hopping terms
   os = OpSum()
   xbond = 0
   ybond = 0
   zbond = 0
-  for b in lattice
-    println(repeat("*", 200))
-    println("Setting two-body interactions in the Hamiltonian")
-    println(repeat("*", 200))
+  
+  println("")
+  println()
+  println(repeat("*", 200))
+  println("Setting up two-body interactions in the Hamiltonian")
+  println(repeat("*", 200))
 
+  for b in lattice
     # Set up the hopping terms for spin-up and spin-down electrons
     # os .+= -t, "Cdagup", b.s1, "Cup", b.s2
     # os .+= -t, "Cdagup", b.s2, "Cup", b.s1
     # os .+= -t, "Cdagdn", b.s1, "Cdn", b.s2
     # os .+= -t, "Cdagdn", b.s2, "Cdn", b.s1
-
+    
     # Set up the anisotropic two-body Kitaev interaction
     tmp_x = div(b.s1 - 1, Ny) + 1
     if iseven(tmp_x)
@@ -94,24 +96,33 @@ let
       zbond += 1
       @info "Added Sz-Sz bond" s1=b.s1 s2=b.s2
     else
-      if abs(b.s1 - b.s2) == Ny
-        os .+= -Jx, "Sx", b.s1, "Sx", b.s2
-        xbond += 1
-        @info "Added Sx-Sx bond" s1=b.s1 s2=b.s2
+      if tmp_x == 1
+        if abs(b.s1 - b.s2) == Ny 
+          os .+= -Jx, "Sx", b.s1, "Sx", b.s2
+          xbond += 1
+          @info "Added Sx-Sx bond" s1=b.s1 s2=b.s2
+        else
+          os .+= -Jy, "Sy", b.s1, "Sy", b.s2
+          ybond += 1
+          @info "Added Sy-Sy bond" s1=b.s1 s2=b.s2
+        end
       else
-        os .+= -0.25 * Jy, "S+", b.s1, "S-", b.s2
-        os .+= -0.25 * Jy, "S-", b.s1, "S+", b.s2
-        os .+=  0.25 * Jy, "S+", b.s1, "S+", b.s2
-        os .+=  0.25 * Jy, "S-", b.s1, "S-", b.s2
-        ybond += 1 
-        @info "Added Sy-Sy bond" s1=b.s1 s2=b.s2
+        if abs(b.s1 - b.s2) == Ny 
+          os .+= -Jy, "Sy", b.s1, "Sy", b.s2
+          ybond += 1
+          @info "Added Sy-Sy bond" s1=b.s1 s2=b.s2
+        else
+          os .+= -Jx, "Sx", b.s1, "Sx", b.s2
+          xbond += 1
+          @info "Added Sx-Sx bond" s1=b.s1 s2=b.s2
+        end
       end
     end
   end
   
   # Check the number of bonds in the Hamiltonian 
-  total_bonds = trunc(Int, 3/2 * N) - Ny + (y_periodic ? -1 : -trunc(Int, N / 2))
-  @show xbond + ybond + zbond == total_bonds
+  total_bonds = trunc(Int, 3/2 * N) - Ny + (y_periodic ? 0 : -trunc(Int, N / 2))
+  @show xbond, ybond, zbond, total_bonds
   if xbond + ybond + zbond != total_bonds
     error("The number of bonds in the Hamiltonian is not correct!")
   end
