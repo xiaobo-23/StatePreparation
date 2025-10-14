@@ -46,6 +46,14 @@ const time_machine = TimerOutput()  # Timing and profiling
 let
   #***************************************************************************************************************
   #***************************************************************************************************************
+  println(repeat("*", 200))
+  println(repeat("*", 200))
+  println("Obtaining the ground state of the interferometry setup of the 2D Kitaev model using DMRG")
+  println(repeat("*", 200))
+  println(repeat("*", 200))
+  println("")
+
+  
   # Scaling factor for the Kitaev interaction to set up the interferometry
   α = 1E-6
 
@@ -220,12 +228,9 @@ let
   if wedge_count != 3 * N - 2 * 2 * Ny
     error("The number of three-spin interaction terms is incorrect!")
   end
-  println(repeat("*", 200))
-  println("")
+   
 
-  
-  #***************************************************************************************************************
-  #***************************************************************************************************************
+  # Two optional parts: (1) adding a Zeeman field to each site; (2) adding loop perturbations to access a specific topological sector
   # # Add the Zeeman terms into the Hamiltonian, which breaks the integrability
   # if h > 1e-8
   #   for site in lattice_sites
@@ -236,65 +241,43 @@ let
   # end
 
 
-  # # Set up the loop operators and loop indices 
+  # # Add loop operators long the y direction of the cylinder to access a specific topological sector
   # loop_operator = ["Sx", "Sx", "Sz", "Sz", "Sz", "Sz"]            # Hard-coded for width-3 cylinders
   # loop_indices = LoopList_RightTwist(Nx_unit, Ny_unit, "rings", "y")  
   # @show loop_indices
-
-
-  # # Generate the plaquette indices for all the plaquettes in the cylinder
-  # # plaquette_operator = Vector{String}(["iY", "Z", "X", "X", "Z", "iY"])
-  # # plaquette_operator = Vector{String}(["Z", "iY", "X", "X", "iY", "Z"]) 
-  # plaquette_operator = [
-  #   ["Sz", "S+", "Sx", "Sx", "S+", "Sz"],
-  #   ["Sz", "S+", "Sx", "Sx", "S-", "Sz"],
-  #   ["Sz", "S-", "Sx", "Sx", "S-", "Sz"],
-  #   ["Sz", "S-", "Sx", "Sx", "S+", "Sz"]
-  # ]
-  # plaquette_indices = PlaquetteList_RightTwist(Nx_unit, Ny_unit, "rings", false)
-  # @show plaquette_indices
-  # #***************************************************************************************************************  
+  println(repeat("*", 200))
+  println("")
+  #***************************************************************************************************************
+  #*************************************************************************************************************** 
   
   
   #***************************************************************************************************************
   #***************************************************************************************************************
-  # Set up the initial MPS and parameters for the DMRG simulation
+  # Run DMRG simulations to find the ground-state wavefunction
+  println(repeat("*", 200))
+  println("Running DMRG simulations to find the ground-state wavefunction")
 
-  # Increase the maximum dimension of Krylov space used to locally solve the eigenvalues problem.
+  # Initialize the wavefunction as a random MPS and set up the Hamiltonian as an MPO
   sites = siteinds("S=1/2", N)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
-  
-  # Initialize the wavefunction as a random MPS and set up the Hamiltonian as an MPO
   ψ₀ = randomMPS(sites, state, 10)
   H = MPO(os, sites)
   
-  
-  # Set up the parameters including bond dimensions and truncation error
+  # Set up hyperparameters used in the DMRG simulations, including bond dimensions, cutoff etc.
   nsweeps = 2
   maxdim  = [20, 60, 100, 500, 800, 1000, 1500, 3000]
   cutoff  = [1E-10]
   eigsolve_krylovdim = 50
   
-  
   # Add noise terms to prevent DMRG from getting stuck in a local minimum
   # noise = [1E-6, 1E-7, 1E-8, 0.0]
   
-  # # Measure one-point functions of the initial state
-  # Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
-  # Splus₀  = expect(ψ₀, "S+", sites = 1 : N)
-  # Sminus₀ = expect(ψ₀, "S-", sites = 1 : N)
-  # Sy₀ = 0.5im * (Splus₀ - Sminus₀)
-  # # @show Sy₀ 
-  # Sz₀ = expect(ψ₀, "Sz", sites = 1 : N)
-  # n₀ = expect(ψ₀, "Ntot", sites = 1 : N)
-  # println("")
-  # @show sum(n₀)
-  # @show n₀
-  # println("")
+  # Measure one-point functions of the initial state
+  Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
+  Sy₀ = im * expect(ψ₀, "iSy", sites = 1 : N)
+  Sz₀ = expect(ψ₀, "Sz", sites = 1 : N)
 
-  #***************************************************************************************************************
-  #***************************************************************************************************************
-  # Run the DMRG simulation and obtain the ground state wavefunction  
+
   # Construct a custom observer and stop the DMRG calculation early if criteria are met
   # custom_observer = DMRGObserver(; energy_tol=1E-9, minsweeps=2, energy_type=Float64)
   custom_observer = CustomObserver()
@@ -303,354 +286,127 @@ let
   @timeit time_machine "dmrg simulation" begin
     energy, ψ = dmrg(H, ψ₀; nsweeps, maxdim, cutoff, eigsolve_krylovdim, observer = custom_observer)
   end
+
+  println("Final ground-state energy = $energy")
+  println(repeat("*", 200))
   #***************************************************************************************************************
   #***************************************************************************************************************
 
-  # #******************************************************************************************************
-  # #******************************************************************************************************
-  # # Take measurements of the wavefunction after the DMRG simulation
-  # #******************************************************************************************************
-  # #******************************************************************************************************
-  # # Measure local observables (one-point functions)
-  # @timeit time_machine "one-point functions" begin
-  #   Sx = expect(ψ, "Sx", sites = 1 : N)
-  #   Splus  = expect(ψ, "S+", sites = 1 : N)
-  #   Sminus = expect(ψ, "S-", sites = 1 : N)
-  #   Sy = 0.5im * (Splus - Sminus)
-  #   Sz = expect(ψ, "Sz", sites = 1 : N)
-  #   n = expect(ψ, "Ntot", sites = 1 : N)
-  # end
-
-  # # Check if the system is properly doped after the DMRG simulation
-  # println("")
-  # @show sum(n)
-  # @show n
-  # println("")
-
-  # if abs(N - sum(n) - 1) > 1E-6
-  #   error("The system is not properly doped!")
-  # end
-
-
-  # # Measure spin correlation functions (two-point functions)  
-  # @timeit time_machine "two-point functions" begin
-  #   xxcorr = correlation_matrix(ψ, "Sx", "Sx", sites = 1 : N)
-  #   zzcorr = correlation_matrix(ψ, "Sz", "Sz", sites = 1 : N)
-  #   # yycorr = correlation_matrix(ψ, "Sy", "Sy", sites = 1 : N)
-  # end
-
-  # # Measure the loop operators along the y direction of the cylinder
-  # # The number of terms in the loop operator depends on the width of the cylinder 
-  # @timeit time_machine "loop operators" begin
-  #   nloops = size(loop_indices, 1)
-  #   yloop_eigenvalues = zeros(Float64, nloops)
-    
-  #   for idx in 1 : nloops
-  #     indices = loop_indices[idx, :]
-  #     # Construct the loop operators as MPOs and compute the eigenvalues
-  #     os_wl = OpSum()
-  #     os_wl += loop_operator[1], indices[1], 
-  #       loop_operator[2], indices[2], 
-  #       loop_operator[3], indices[3], 
-  #       loop_operator[4], indices[4], 
-  #       loop_operator[5], indices[5], 
-  #       loop_operator[6], indices[6]
-  #     Wl = MPO(os_wl, sites)
-
-  #     # The normalize factor is due to the difference between Pauli operators and spin operators
-  #     yloop_eigenvalues[idx] = real(inner(ψ', Wl, ψ))
-  #     yloop_eigenvalues[idx] *= 2^6 
-  #   end
-  # end
-  # # @show yloop_eigenvalues
-
-  # # Measure the eigenvalues of plaquette operators
-  # # Decompose the plaquette operators into four terms for tJ type of sites
-  # @timeit time_machine "plaquette operators" begin
-  #   nplaquettes = size(plaquette_indices, 1)
-  #   plaquette_eigenvalues = zeros(Float64, nplaquettes)
-    
-  #   for idx1 in 1:nplaquettes
-  #     indices  = plaquette_indices[idx1, :]
-      
-  #     for idx2 in 1:4
-  #       operator = plaquette_operator[idx2]
-  #       # @show operator, indices
-  #       os_w = OpSum()
-  #       os_w += operator[1], indices[1], 
-  #         operator[2], indices[2], 
-  #         operator[3], indices[3], 
-  #         operator[4], indices[4], 
-  #         operator[5], indices[5], 
-  #         operator[6], indices[6]
-  #       W = MPO(os_w, sites)
-  #       # @show (-1.0)^idx2 * real(inner(ψ', W, ψ)) * 2^6
-  #       plaquette_eigenvalues[idx1] += (-1.0)^idx2 * real(inner(ψ', W, ψ))
-  #     end
-  #     plaquette_eigenvalues[idx1] *= 2^6 / 4
-  #     # @show inner(ψ', W, ψ) / inner(ψ', ψ)
-  #   end
-  # end
-  # # @show plaquette_eigenvalues
-
-
-  # # Set up and measure the eigenvalues of the order parameter(s)
-  # # Define the central sites, excluding a margin of 2*Ny sites from both boundaries
-  # centers = collect((2 * Ny + 2):(N - 2 * Ny - 1))
-  # @info "Central sites selected for measurement" centers=centers
+  #***************************************************************************************************************
+  #***************************************************************************************************************
+  # Take measurements of the optimized ground-state wavefunction
   
-  # order_loops = []
-  # for center in centers
-  #   tmp_x = div(center - 1, Ny) + 1
-  #   tmp_y = mod(center - 1, Ny) + 1
-  #   tmp_loop = []
+  # Measure local observables (one-point functions)
+  @timeit time_machine "one-point functions" begin
+    Sx = expect(ψ, "Sx", sites = 1 : N)
+    Sy = expect(ψ, "Sy", sites = 1 : N)
+    Sz = expect(ψ, "Sz", sites = 1 : N)
+  end
 
-  #   if isodd(tmp_x)
-  #     if tmp_y == 1
-  #       append!(tmp_loop, [
-  #         center + 1,
-  #         center + Ny,
-  #         center + 2 * Ny,
-  #         center + 2 * Ny - 1,
-  #         center + Ny - 1,
-  #         center - 1,
-  #         center - Ny - 1,
-  #         center - 2 * Ny - 1,
-  #         center - 2 * Ny,
-  #         center - Ny,
-  #         center - 2 * Ny + 1, 
-  #         center - Ny + 1
-  #       ])
-  #     elseif tmp_y == Ny
-  #       append!(tmp_loop, [
-  #         center + Ny + 1,
-  #         center + Ny,
-  #         center + 2 * Ny,
-  #         center + 2 * Ny + 2,
-  #         center + 2 * Ny - 1,
-  #         center + Ny - 1,
-  #         center - 1,
-  #         center - Ny - 1,
-  #         center - 2 * Ny,
-  #         center - Ny,
-  #         center - Ny + 1,
-  #         center + 1
-  #       ])
-  #     else
-  #       # Construct the loop for odd x and tmp_y ≠ 1 and tmp_y ≠ Ny
-  #       append!(tmp_loop, [
-  #         center + 1,
-  #         center + Ny,
-  #         center + 2 * Ny,
-  #         center + 2 * Ny + 2,
-  #         center + 2 * Ny - 1,
-  #         center + Ny - 1,
-  #         center - 1,
-  #         center - Ny - 1,
-  #         center - 2 * Ny,
-  #         center - Ny,
-  #         center - 2 * Ny + 1,
-  #         center - Ny + 1
-  #       ])
-  #     end
-  #   else
-  #     if tmp_y == 1
-  #       # Construct the loop for even x and tmp_y == 1
-  #       append!(tmp_loop, [
-  #         center - Ny - 1,
-  #         center - Ny,
-  #         center - 2 * Ny,
-  #         center - 3 * Ny + 1,
-  #         center - 2 * Ny + 1,
-  #         center - Ny + 1,
-  #         center + 1,
-  #         center + Ny + 1,
-  #         center + 2 * Ny,
-  #         center + Ny,
-  #         center + Ny - 1,
-  #         center - 1
-  #       ])
-  #     elseif tmp_y == Ny
-  #       # Construct the loop for even x and tmp_y == Ny
-  #       append!(tmp_loop, [
-  #         center - 1,
-  #         center - Ny,
-  #         center - 2 * Ny,
-  #         center - 2 * Ny + 1,
-  #         center - Ny + 1,
-  #         center + 1,
-  #         center + Ny + 1,
-  #         center + 2 * Ny + 1,
-  #         center + 2 * Ny,
-  #         center + Ny,
-  #         center + 2 * Ny - 1,
-  #         center + Ny - 1
-  #       ]) 
-  #     else
-  #       # Construct the loop for even x and tmp_y != 1 and tmp_y != Ny
-  #       append!(tmp_loop, [
-  #         center - 1,
-  #         center - Ny,
-  #         center - 2 * Ny,
-  #         center - 3 * Ny + 1,
-  #         center - 2 * Ny + 1,
-  #         center - Ny + 1,
-  #         center + 1,
-  #         center + Ny + 1,
-  #         center + 2 * Ny,
-  #         center + Ny,
-  #         center + 2 * Ny - 1,
-  #         center + Ny - 1
-  #       ])
-  #     end
-  #   end
-  #   push!(order_loops, tmp_loop)
-  # end
+  # Measure spin correlation functions (two-point functions)
+  @timeit time_machine "two-point functions" begin
+    xxcorr = correlation_matrix(ψ, "Sx", "Sx", sites = 1 : N)
+    zzcorr = correlation_matrix(ψ, "Sz", "Sz", sites = 1 : N)
+    yycorr = -1.0 * correlation_matrix(ψ, "iSy", "iSy", sites = 1 : N)
+  end
+
+
+  # Measure the expectation values of the plaquette operators (six-point correlators) around each hexagon
+  # Set up the plaquette operators and corresponding indices for all hexagons
+  println(repeat("*", 200))
+  println("Measuring the expectation values of the plaquette operators around each hexagon")
+  plaquette_op = Vector{String}(["Z", "iY", "X", "Z", "iY", "X"])
+  plaquette_inds = PlaquetteListInterferometry(Nx_unit, Ny_unit, "rings", false)
   
-  # for idx in eachindex(order_loops)
-  #   @show centers[idx], order_loops[idx]
-  # end
+  for idx in 1 : size(plaquette_inds, 1)
+    @show plaquette_inds[idx, :]
+  end
+  println("")
 
-  # function configure_signs(input_string)
-  #   return [(-1.0)^count(==( "S-" ), row) for row in input_string]
-  # end
+  nplaquettes = size(plaquette_inds, 1)
+  plaquette_vals = zeros(Float64, nplaquettes)
 
-  # order_string = [["Sx", "Sx", "Sx", "Sz", "S+", "S+", "S+", "Sx", "Sz", "Sz", "Sz", "S+"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S+", "S+", "S+", "Sx", "Sz", "Sz", "Sz", "S-"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S+", "S+", "S-", "Sx", "Sz", "Sz", "Sz", "S+"],
-  # ["Sx", "Sx", "Sx", "Sz", "S+", "S+", "S-", "Sx", "Sz", "Sz", "Sz", "S-"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S+", "S-", "S+", "Sx", "Sz", "Sz", "Sz", "S+"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S+", "S-", "S+", "Sx", "Sz", "Sz", "Sz", "S-"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S+", "S-", "S-", "Sx", "Sz", "Sz", "Sz", "S+"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S+", "S-", "S-", "Sx", "Sz", "Sz", "Sz", "S-"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S-", "S+", "S+", "Sx", "Sz", "Sz", "Sz", "S+"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S-", "S+", "S+", "Sx", "Sz", "Sz", "Sz", "S-"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S-", "S+", "S-", "Sx", "Sz", "Sz", "Sz", "S+"],
-  # ["Sx", "Sx", "Sx", "Sz", "S-", "S+", "S-", "Sx", "Sz", "Sz", "Sz", "S-"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S-", "S-", "S+", "Sx", "Sz", "Sz", "Sz", "S+"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S-", "S-", "S+", "Sx", "Sz", "Sz", "Sz", "S-"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S-", "S-", "S-", "Sx", "Sz", "Sz", "Sz", "S+"], 
-  # ["Sx", "Sx", "Sx", "Sz", "S-", "S-", "S-", "Sx", "Sz", "Sz", "Sz", "S-"]]
+  @timeit time_machine "plaquette operators" begin
+    for idx in 1:nplaquettes
+      indices  = plaquette_inds[idx, :]
+      os_w = OpSum()
+      os_w .+= plaquette_op[1], indices[1], 
+        plaquette_op[2], indices[2], 
+        plaquette_op[3], indices[3], 
+        plaquette_op[4], indices[4], 
+        plaquette_op[5], indices[5], 
+        plaquette_op[6], indices[6]
+      W = MPO(os_w, sites)
+
+      # There is a minus sign becuase of the two "iY" operators
+      plaquette_vals[idx] = -1.0 * real(inner(ψ', W, ψ))
+    end
+  end
+  println("The expectation values of the plaquette operators around each hexagon are:")
+  @show plaquette_vals
+
+  println(repeat("*", 200))
+  println("")
+  #***************************************************************************************************************
+  #***************************************************************************************************************
   
-  # # Reference sign structure for the order parameter 
-  # # sign = [1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0]
-  # sign = configure_signs(order_string)
-  # @show sign
 
-  # @timeit time_machine "order parameter(s)" begin
-  #   order_parameter = zeros(Float64, length(order_loops))
-  #   order₀ = zeros(Float64, length(order_loops))
+  #***************************************************************************************************************
+  #***************************************************************************************************************
+  println(repeat("*", 200))
+  println("Summary of results:")
+  println("")
 
-  #   for idx1 in 1 : size(order_loops)[1]
-  #     loop = order_loops[idx1]
-  #     for idx2 in 1 : size(order_string)[1]
-  #       operator = order_string[idx2]
-  #       os_order = OpSum()
-  #       os_order +=  "Ntot", centers[idx1], 
-  #         operator[1], loop[1], 
-  #         operator[2], loop[2], 
-  #         operator[3], loop[3], 
-  #         operator[4], loop[4], 
-  #         operator[5], loop[5], 
-  #         operator[6], loop[6],
-  #         operator[7], loop[7],
-  #         operator[8], loop[8],
-  #         operator[9], loop[9],
-  #         operator[10], loop[10],
-  #         operator[11], loop[11],
-  #         operator[12], loop[12]
-  #       W_order = MPO(os_order, sites)
-
-  #       os_order_identity = OpSum()
-  #       os_order_identity += operator[1], loop[1], 
-  #         operator[2], loop[2], 
-  #         operator[3], loop[3], 
-  #         operator[4], loop[4], 
-  #         operator[5], loop[5], 
-  #         operator[6], loop[6],
-  #         operator[7], loop[7],
-  #         operator[8], loop[8],
-  #         operator[9], loop[9],
-  #         operator[10], loop[10],
-  #         operator[11], loop[11],
-  #         operator[12], loop[12]
-  #       W_order_identity = MPO(os_order_identity, sites)
-
-  #       order_parameter[idx1] += (1/2)^4 * 2^12 * sign[idx2] * (real(inner(ψ', W_order_identity, ψ)) - real(inner(ψ', W_order, ψ)))
-  #       order₀[idx1] += (1/2)^4 * 2^12 * sign[idx2] * real(inner(ψ', W_order, ψ))
-  #     end
-  #   end
-  # end
-
-  # for idx in eachindex(order_parameter)
-  #   @show order_parameter[idx]
-  # end
-
-  # for idx in eachindex(order₀)
-  #   @show order₀[idx]
-  # end
-
-  # # # Print out useful information of physical quantities
-  # # println("")
-  # # println("Visualize the optimization history of the energy and bond dimensions:")
-  # # @show custom_observer.ehistory_full
-  # # @show custom_observer.ehistory
-  # # @show custom_observer.chi
-  # # # @show number_of_bonds, energy / number_of_bonds
-  # # # @show N, energy / N
-  # # println("")
-
-  # # Check the variance of the energy
-  # @timeit time_machine "compaute the variance" begin
-  #   H2 = inner(H, ψ, H, ψ)
-  #   E₀ = inner(ψ', H, ψ)
-  #   variance = H2 - E₀^2
-  # end
-  # println("")
-  # @show E₀
-  # println("Variance of the energy is $variance")
-  # println("")
+  # Check the variance of the energy
+  @timeit time_machine "compaute the variance" begin
+    H2 = inner(H, ψ, H, ψ)
+    E₀ = inner(ψ', H, ψ)
+    variance = H2 - E₀^2
+  end
+  println("Variance of the energy is $variance")
+  println("")
   
-  # println("")
-  # println("Eigenvalues of the plaquette operator:")
-  # @show plaquette_eigenvalues
-  # println("")
 
-  # print("")
+  println("Expectation values of the plaquette operators:")
+  @show plaquette_vals
+  println("")
+
+
+  println("Expectation values of one-point functions <Sx>, <Sy>, and <Sz>:")
+  @show Sx
+  @show Sy
+  @show Sz
+  println("")
+
+
   # println("Eigenvalues of the loop operator(s):")
   # @show yloop_eigenvalues
   # println("")
+  println(repeat("*", 200))
+  println("")
+  #***************************************************************************************************************
+  #***************************************************************************************************************
 
-  # # # println("")
-  # # # println("Eigenvalues of the twelve-point correlator near the first vacancy:")
-  # # # @show order_parameter
-  # # # println("")
-
-
-  # # @show time_machine
-  # # h5open("../../data/test_tK/2d_tK_FM_Lx$(Nx_unit)_Ly$(Ny_unit)_kappa$(κ)_doped_hopping.h5", "w") do file
-  # #   write(file, "psi", ψ)
-  # #   write(file, "NormalizedE0", energy / number_of_bonds)
-  # #   write(file, "E0", energy)
-  # #   write(file, "E0variance", variance)
-  # #   write(file, "Ehist", custom_observer.ehistory)
-  # #   write(file, "Bond", custom_observer.chi)
-  # #   # write(file, "Entropy", SvN)
-  # #   write(file, "Sx0", Sx₀)
-  # #   write(file, "Sx",  Sx)
-  # #   write(file, "Cxx", xxcorr)
-  # #   write(file, "Sy0", Sy₀)
-  # #   write(file, "Sy", Sy)
-  # #   # # write(file, "Cyy", yycorr)
-  # #   write(file, "Sz0", Sz₀)
-  # #   write(file, "Sz",  Sz)
-  # #   write(file, "Czz", zzcorr)
-  # #   write(file, "N0", n₀)
-  # #   write(file, "N", n)
-  # #   write(file, "Plaquette", plaquette_eigenvalues)
-  # #   write(file, "Loop", yloop_eigenvalues)
-  # #   write(file, "OrderParameter", order_parameter)
-  # # end
+  
+  @show time_machine
+  h5open("data/interferometry_kappa$(κ).h5", "cw") do file
+    write(file, "psi", ψ)
+    write(file, "E0", energy)
+    write(file, "E0variance", variance)
+    write(file, "Ehist", custom_observer.ehistory)
+    write(file, "Bond", custom_observer.chi)
+    # write(file, "Entropy", SvN)
+    write(file, "Sx0", Sx₀)
+    write(file, "Sx",  Sx)
+    write(file, "Cxx", xxcorr)
+    write(file, "Sy0", Sy₀)
+    write(file, "Sy", Sy)
+    write(file, "Cyy", yycorr)
+    write(file, "Sz0", Sz₀)
+    write(file, "Sz",  Sz)
+    write(file, "Czz", zzcorr)
+    write(file, "Plaquette", plaquette_eigenvalues)
+  end
 
   return
 end
