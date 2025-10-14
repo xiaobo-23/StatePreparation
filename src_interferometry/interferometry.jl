@@ -85,7 +85,7 @@ let
 
 
   # Remove sites to set up the interferometry
-  empty_sites = Set{Int64}([])
+  empty_sites = Set{Int64}([3, 6, 44, 47])
   y_periodic = true
 
   
@@ -108,31 +108,41 @@ let
     # os .+= -t, "Cdagdn", b.s2, "Cdn", b.s1
     
     # Set up the anisotropic two-body Kitaev interaction
+    if b.s1 in empty_sites || b.s2 in empty_sites
+      effective_Jx = α * Jx
+      effective_Jy = α * Jy
+      effective_Jz = α * Jz
+    else
+      effective_Jx = Jx
+      effective_Jy = Jy
+      effective_Jz = Jz
+    end
+
     tmp_x = div(b.s1 - 1, Ny) + 1
     if iseven(tmp_x)
-      os .+= -Jz, "Sz", b.s1, "Sz", b.s2
+      os .+= -effective_Jz, "Sz", b.s1, "Sz", b.s2
       zbond += 1
-      @info "Added Sz-Sz bond" s1=b.s1 s2=b.s2
+      @info "Added Sz-Sz bond" term = ("Jz", effective_Jz, "Sz", b.s1, "Sz", b.s2)
     else
       if tmp_x == 1
         if abs(b.s1 - b.s2) == Ny 
-          os .+= -Jx, "Sx", b.s1, "Sx", b.s2
+          os .+= -effective_Jx, "Sx", b.s1, "Sx", b.s2
           xbond += 1
-          @info "Added Sx-Sx bond" s1=b.s1 s2=b.s2
+          @info "Added Sx-Sx bond" term = ("Jx", effective_Jx, "Sx", b.s1, "Sx", b.s2)
         else
-          os .+= -Jy, "Sy", b.s1, "Sy", b.s2
+          os .+= -effective_Jy, "Sy", b.s1, "Sy", b.s2
           ybond += 1
-          @info "Added Sy-Sy bond" s1=b.s1 s2=b.s2
+          @info "Added Sy-Sy bond" term = ("Jy", effective_Jy, "Sy", b.s1, "Sy", b.s2)
         end
       else
         if abs(b.s1 - b.s2) == Ny 
-          os .+= -Jy, "Sy", b.s1, "Sy", b.s2
+          os .+= -effective_Jy, "Sy", b.s1, "Sy", b.s2
           ybond += 1
-          @info "Added Sy-Sy bond" s1=b.s1 s2=b.s2
+          @info "Added Sy-Sy bond" term = ("Jy", effective_Jy, "Sy", b.s1, "Sy", b.s2)
         else
-          os .+= -Jx, "Sx", b.s1, "Sx", b.s2
+          os .+= -effective_Jx, "Sx", b.s1, "Sx", b.s2
           xbond += 1
-          @info "Added Sx-Sx bond" s1=b.s1 s2=b.s2
+          @info "Added Sx-Sx bond" term = ("Jx", effective_Jx, "Sx", b.s1, "Sx", b.s2)
         end
       end
     end
@@ -157,33 +167,40 @@ let
     x_coordinate = div(w.s2 - 1, Ny) + 1
     y_coordinate = mod(w.s2 - 1, Ny) + 1
 
+    if w.s1 in empty_sites || w.s2 in empty_sites || w.s3 in empty_sites
+      effective_κ = α * κ
+    else
+      effective_κ = κ
+    end
+
+
     # Set up the three-spin interaction terms for the odd columns
     if isodd(x_coordinate)
       if x_coordinate == 1
         if y_coordinate != Ny 
-          os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
-          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3)
+          os .+= effective_κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3, "kappa", effective_κ)
         else
-          os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
-          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
+          os .+= effective_κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3, "kappa", effective_κ)
         end
         wedge_count += 1
       else
         if abs(w.s1 - w.s2) == abs(w.s2 - w.s3) == Ny 
-          os .+= κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
-          @info "Added three-spin term" term = ("Sz", w.s1, "Sx", w.s2, "Sy", w.s3)
+          os .+= effective_κ, "Sz", w.s1, "Sx", w.s2, "Sy", w.s3
+          @info "Added three-spin term" term = ("Sz", w.s1, "Sx", w.s2, "Sy", w.s3, "kappa", effective_κ)
           wedge_count += 1
         elseif abs(w.s3 - w.s1) == 1
-          os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
-          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3)
+          os .+= effective_κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3, "kappa", effective_κ)
           wedge_count += 1
         elseif abs(w.s3 - w.s1) == Ny - 1
-          os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
-          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
+          os .+= effective_κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3, "kappa", effective_κ)
           wedge_count += 1
         else
-          os .+= κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
-          @info "Added three-spin term" term = ("Sz", w.s1, "Sy", w.s2, "Sx", w.s3)
+          os .+= effective_κ, "Sz", w.s1, "Sy", w.s2, "Sx", w.s3
+          @info "Added three-spin term" term = ("Sz", w.s1, "Sy", w.s2, "Sx", w.s3, "kappa", effective_κ)
           wedge_count += 1
         end
       end
@@ -194,29 +211,29 @@ let
     if iseven(x_coordinate)
       if x_coordinate == Nx 
         if abs(w.s3 - w.s1) == 1
-          os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
-          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
+          os .+= effective_κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3, "kappa", effective_κ)
         else
-          os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
-          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3)
+          os .+= effective_κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3, "kappa", effective_κ)
         end
         wedge_count += 1
       else
         if abs(w.s3 - w.s2) == abs(w.s2 - w.s1) == Ny
-          os .+= κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3 
-          @info "Added three-spin term" term = ("Sx", w.s1, "Sy", w.s2, "Sz", w.s3)
+          os .+= effective_κ, "Sx", w.s1, "Sy", w.s2, "Sz", w.s3 
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sy", w.s2, "Sz", w.s3, "kappa", effective_κ)
           wedge_count += 1
         elseif abs(w.s3 - w.s1) == 1
-          os .+= κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
-          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3)
+          os .+= effective_κ, "Sy", w.s1, "Sz", w.s2, "Sx", w.s3
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sz", w.s2, "Sx", w.s3, "kappa", effective_κ)
           wedge_count += 1
         elseif abs(w.s3 - w.s1) == Ny - 1
-          os .+= κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
-          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3)
+          os .+= effective_κ, "Sx", w.s1, "Sz", w.s2, "Sy", w.s3
+          @info "Added three-spin term" term = ("Sx", w.s1, "Sz", w.s2, "Sy", w.s3, "kappa", effective_κ)
           wedge_count += 1
         else
-          os .+= κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
-          @info "Added three-spin term" term = ("Sy", w.s1, "Sx", w.s2, "Sz", w.s3)
+          os .+= effective_κ, "Sy", w.s1, "Sx", w.s2, "Sz", w.s3
+          @info "Added three-spin term" term = ("Sy", w.s1, "Sx", w.s2, "Sz", w.s3, "kappa", effective_κ)
           wedge_count += 1
         end
       end
@@ -366,47 +383,42 @@ let
   println("Variance of the energy is $variance")
   println("")
   
-
+  # Check the expectation values of the plaquette operators
   println("Expectation values of the plaquette operators:")
   @show plaquette_vals
   println("")
 
-
+  # Check one-point functions
   println("Expectation values of one-point functions <Sx>, <Sy>, and <Sz>:")
   @show Sx
   @show Sy
   @show Sz
-  println("")
 
-
-  # println("Eigenvalues of the loop operator(s):")
-  # @show yloop_eigenvalues
-  # println("")
   println(repeat("*", 200))
   println("")
   #***************************************************************************************************************
   #***************************************************************************************************************
 
   
-  @show time_machine
-  h5open("data/interferometry_kappa$(κ).h5", "cw") do file
-    write(file, "psi", ψ)
-    write(file, "E0", energy)
-    write(file, "E0variance", variance)
-    write(file, "Ehist", custom_observer.ehistory)
-    write(file, "Bond", custom_observer.chi)
-    # write(file, "Entropy", SvN)
-    write(file, "Sx0", Sx₀)
-    write(file, "Sx",  Sx)
-    write(file, "Cxx", xxcorr)
-    write(file, "Sy0", Sy₀)
-    write(file, "Sy", Sy)
-    write(file, "Cyy", yycorr)
-    write(file, "Sz0", Sz₀)
-    write(file, "Sz",  Sz)
-    write(file, "Czz", zzcorr)
-    write(file, "Plaquette", plaquette_eigenvalues)
-  end
+  # @show time_machine
+  # h5open("data/interferometry_kappa$(κ).h5", "cw") do file
+  #   write(file, "psi", ψ)
+  #   write(file, "E0", energy)
+  #   write(file, "E0variance", variance)
+  #   write(file, "Ehist", custom_observer.ehistory)
+  #   write(file, "Bond", custom_observer.chi)
+  #   # write(file, "Entropy", SvN)
+  #   write(file, "Sx0", Sx₀)
+  #   write(file, "Sx",  Sx)
+  #   write(file, "Cxx", xxcorr)
+  #   write(file, "Sy0", Sy₀)
+  #   write(file, "Sy", Sy)
+  #   write(file, "Cyy", yycorr)
+  #   write(file, "Sz0", Sz₀)
+  #   write(file, "Sz",  Sz)
+  #   write(file, "Czz", zzcorr)
+  #   write(file, "Plaquette", plaquette_eigenvalues)
+  # end
 
   return
 end
