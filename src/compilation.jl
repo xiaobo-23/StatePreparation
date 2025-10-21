@@ -25,7 +25,7 @@ OMP_NUM_THREADS = 8
 
 const N = 8  # Total number of qubits
 const J₁ = 1.0
-const τ = 0.5
+const τ = 0.2
 const cutoff = 1e-10
 const nsweeps = 1
 const time_machine = TimerOutput()  # Timing and profiling
@@ -47,7 +47,7 @@ let
   println("Optimize two-qubit gates to approximate the time evolution operator")
   
   
-  Random.seed!(123)
+  Random.seed!(678)
   # Initialize the origiinal random MPS
   sites = siteinds("S=1/2", N; conserve_qns=false)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
@@ -73,7 +73,7 @@ let
   #*****************************************************************************************************
   # Construct a sequence of two-qubit gates
   gates = ITensor[]
-  for idx in 3:2:(N-1)
+  for idx in 1:2:(N-1)
     # @show idx
     s₁ = sites[idx]
     s₂ = sites[idx+1]
@@ -88,7 +88,7 @@ let
 
   ψ_R = deepcopy(ψ₀)                        # Create a copy of the original MPS to apply gates
   ψ_R = apply(gates, ψ_R; cutoff=cutoff)
-  normalize!(ψ_R)
+  # normalize!(ψ_R)
   
   Sx_R, Sz_R = zeros(Float64, N), zeros(Float64, N)
   Sx_R = expect(ψ_R, "Sx", sites = 1 : N)
@@ -105,9 +105,8 @@ let
   # @show Sz_R
   # println("")
   
-  
   optimization_gates = ITensor[]
-  for idx in 3:2:(N-1)
+  for idx in 1:2:(N-1)
     s₁ = sites[idx]
     s₂ = sites[idx+1]
     G_opt = randomITensor(s₁', s₂', s₁, s₂)
@@ -124,29 +123,43 @@ let
   for iteration in 1 : nsweeps
     println(repeat("#", 200))
     println("Iteration = $iteration: forward sweep")
-    for idx in 1 : length(optimization_gates)
+    if iteration == 1
+      starting_idx = 1
+    else
+      starting_idx = 2
+    end
+    
+    for idx in starting_idx : length(optimization_gates)
       # Contract psi_L and the two-qubit gate to form a new MPS
       tmp_Gates = deepcopy(optimization_gates)
       gate₀ = tmp_Gates[idx]
+      tmp_ψ = deepcopy(ψ₀)
       # if idx != 1
       #   @show optimization_gates[idx - 1]
       # end
       # @show set_copy[idx - 1]
+
+      @show length(tmp_Gates)
       deleteat!(tmp_Gates, idx)
-  
+      @show length(tmp_Gates)
+
+      if gate₀ in tmp_Gates
+        error("The gate to be optimized is still in the temporary gate set!")
+      end
 
       tmp_ψ = apply(tmp_Gates, ψ₀; cutoff=cutoff)
+      # tmp_ψ = apply(tmp_Gates, tmp_ψ; cutoff=cutoff)
       # normalize!(tmp_ψ)
-      i₁, i₂ = siteind(tmp_ψ, 2 * idx + 1), siteind(tmp_ψ, 2 * idx + 2)
+      i₁, i₂ = siteind(tmp_ψ, 2 * idx - 1), siteind(tmp_ψ, 2 * idx)
       # @show i₁, i₂
       # println("")
 
       # Set specific site indices to be primed
       # prime!(ψ_R, siteind(ψ_R, 2 * idx - 1))
       # prime!(ψ_R, siteind(ψ_R, 2 * idx))
-      prime!(ψ_R[2 * idx + 1], tags = "Site")
-      prime!(ψ_R[2 * idx + 2], tags = "Site")
-      j₁, j₂ = siteind(ψ_R, 2 * idx + 1), siteind(ψ_R, 2 * idx + 2)
+      prime!(ψ_R[2 * idx - 1], tags = "Site")
+      prime!(ψ_R[2 * idx], tags = "Site")
+      j₁, j₂ = siteind(ψ_R, 2 * idx - 1), siteind(ψ_R, 2 * idx)
       # @show j₁, j₂
       # println("")
 
@@ -161,33 +174,66 @@ let
       # Compute the environment tensors using up and down parts
       envL = ITensor(1)
       for j in 1:(2 * idx - 2)
-        if j == 1
-          envL = tmp_ψ[j]
-          envL *= ψ_R[j]
-        else
-          envL *= tmp_ψ[j]
-          envL *= ψ_R[j]
-        end
+        envL *= tmp_ψ[j]
+        envL *= ψ_R[j]
+        println("")
+        println("Forward sweep")
+        @show j
+        println("")
       end
+
 
       envR = ITensor(1)
       for j in N:-1:(2 * idx + 1)
-        if j == N
-          envR = tmp_ψ[j]
-          envR *= ψ_R[j]
-        else
-          envR *= tmp_ψ[j]
-          envR *= ψ_R[j]
-        end
+        envR *= tmp_ψ[j]
+        envR *= ψ_R[j]
+      
+        println("")
+        println("Backward sweep")
+        @show j
+        println("")
       end
 
+      # envR = ITensor(1)
+      # for j in N:-1:(2 * idx + 3)
+      #   # if j == N
+      #   #   envR = tmp_ψ[j]
+      #   #   envR *= ψ_R[j]
+      #   # else
+      #   #   envR *= tmp_ψ[j]
+      #   #   envR *= ψ_R[j]
+      #   # end
+      #   println("")
+      #   println("Backward sweep")
+      #   @show j
+      #   if j == N
+      #     envR = tmp_ψ[j] * ψ_R[j]
+      #   else
+      #     envR *= (tmp_ψ[j] * ψ_R[j])
+      #   end
+      #   println("")
+      # end
+
+
       T = ITensor()
-      T = envR * tmp_ψ[2 * idx - 1] * ψ_R[2 * idx - 1]
-      T *= tmp_ψ[2 * idx] * ψ_R[2 * idx] 
-      T *= envL
-      #*****************************************************************************************************
+      T = envL * tmp_ψ[2 * idx - 1] * ψ_R[2 * idx - 1]
+      T *= (tmp_ψ[2 * idx] * ψ_R[2 * idx])
+      T *= envR
+      # @show inds(T)
       noprime!(ψ_R)
 
+      
+      envScalar1 = ITensor(1)
+      for idx in 1 : length(tmp_ψ)
+        envScalar1 *= (tmp_ψ[idx] * ψ_R[idx])
+      end
+
+      envScalar2 = ITensor(1)
+      envR_copy = deepcopy(envR)
+      noprime!(envR_copy)
+      envScalar2 = envL * envR_copy * (tmp_ψ[2 * idx - 1] * ψ_R[2 * idx - 1]) * (tmp_ψ[2 * idx] * ψ_R[2 * idx])
+      #*****************************************************************************************************
+      
       # @show T
       # @show inds(T)
       # println("")
@@ -200,19 +246,21 @@ let
       # T_transpose = dag(tmpV) * tmpS * dag(tmpU)
      
       gates_set = push!(deepcopy(tmp_Gates), gate₀)
-      @show real((T * gate₀))[1]
+      @show real((T * gate₀)[1])
+      @show real(envScalar1[1])
+      @show real(envScalar2[1])
       @show compute_cost_function(ψ₀, ψ_R, optimization_gates)
       @show compute_cost_function(ψ₀, ψ_R, gates_set)
+      @show compute_cost_function(ψ₀, ψ_R, tmp_Gates)
       println("")
 
       
       # U, S, V = svd(T, (i₁, j₁))
       U, S, V = svd(T, (i₁, i₂))
       @show T ≈ U * S * V
-      # @show inds(U)
       
-     
-      # Setting the singular values to be 1 by hands
+
+      # Setting the singular values to 1
       # # @show S
       # S[1, 1] = 1.0
       # S[2, 2] = 1.0
@@ -224,14 +272,15 @@ let
       
       # TO-DO: figure out the row indices used in svd
       updated_T = dag(V) * delta(inds(S)[1], inds(S)[2]) * dag(U)
-      optimization_gates[idx] = dag(updated_T)
-      
+      optimization_gates[idx] = updated_T
+
       # @show dag(updated_T) * updated_T
       println("")
       # @show updated_T
       # @show optimization_gates[idx]
     end
     println("")
+    
     
     println(repeat("#", 200))
     println("Iteration = $iteration: backward sweep")
@@ -244,16 +293,16 @@ let
       deleteat!(tmp_Gates, idx)
       tmp_ψ = apply(tmp_Gates, ψ₀; cutoff=cutoff)
       # normalize!(tmp_ψ)
-      i₁, i₂ = siteind(tmp_ψ, 2 * idx + 1), siteind(tmp_ψ, 2 * idx + 2)
+      i₁, i₂ = siteind(tmp_ψ, 2 * idx - 1), siteind(tmp_ψ, 2 * idx)
       # @show i₁, i₂
       # println("")
 
       # Set specific site indices to be primed
       # prime!(ψ_R, siteind(ψ_R, 2 * idx - 1))
       # prime!(ψ_R, siteind(ψ_R, 2 * idx))
-      prime!(ψ_R[2 * idx + 1], tags = "Site")
-      prime!(ψ_R[2 * idx + 2], tags = "Site")
-      j₁, j₂ = siteind(ψ_R, 2 * idx + 1), siteind(ψ_R, 2 * idx + 2)
+      prime!(ψ_R[2 * idx - 1], tags = "Site")
+      prime!(ψ_R[2 * idx], tags = "Site")
+      j₁, j₂ = siteind(ψ_R, 2 * idx - 1), siteind(ψ_R, 2 * idx)
       # @show j₁, j₂
       # println("")
 
@@ -272,11 +321,11 @@ let
       @show real((T * dag(gate₀)))[1]
       @show compute_cost_function(ψ₀, ψ_R, optimization_gates)
       println("")
-
       
       # U, S, V = svd(T, (i₁, j₁))
       U, S, V = svd(T, (i₁, i₂))
-      # @show T ≈ U * S * V
+      @show T ≈ U * S * V
+
 
       # # @show S
       # S[1, 1] = 1.0
