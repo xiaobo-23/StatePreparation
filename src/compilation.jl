@@ -23,18 +23,24 @@ OMP_NUM_THREADS = 8
 @show BLAS.get_num_threads()
 
 
-const N = 8  # Total number of qubits
+const N = 12 # Total number of qubits
 const J₁ = 1.0
 const τ = 0.2
-const cutoff = 1e-10
-const nsweeps = 1
+const cutoff = 1e-12
+const nsweeps = 100
 const time_machine = TimerOutput()  # Timing and profiling
 
 
 # Define a function to compute the cost function given two MPS and a set of unitaries
-function compute_cost_function(input_ψ_L::MPS, input_ψ_R::MPS, input_gates::Vector{ITensor})
-  intermediate_psi = apply(input_gates, input_ψ_L; cutoff=cutoff)
-  # normalize!(intermediate_psi)
+function compute_cost_function(input_ψ_L::MPS, input_ψ_R::MPS, input_gates::Vector{ITensor}, input_cutoff::Float64 = 1e-10)
+  intermediate_psi = apply(input_gates, input_ψ_L; cutoff=input_cutoff)
+  normalize!(intermediate_psi)
+
+  # fidelity = ITensor(1)
+  # for idx₁ in 1:length(intermediate_psi)
+  #   fidelity *= (intermediate_psi[idx₁] * dag(input_ψ_R[idx₁]))
+  # end
+  # @show real(fidelity[1]) ≈ real(inner(intermediate_psi, input_ψ_R)), real(fidelity[1]), real(inner(intermediate_psi, input_ψ_R)) 
   return real(inner(intermediate_psi, input_ψ_R))
 end
 
@@ -47,7 +53,7 @@ let
   println("Optimize two-qubit gates to approximate the time evolution operator")
   
   
-  Random.seed!(678)
+  Random.seed!(1234567)
   # Initialize the origiinal random MPS
   sites = siteinds("S=1/2", N; conserve_qns=false)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
@@ -55,6 +61,7 @@ let
   # ψ₀ = MPS(sites, state)                    # Initialize the MPS in a Neel state
   # @show ψ₀
 
+  
   # Measure local observables (one-point functions)
   Sx₀, Sy₀, Sz₀ = zeros(Float64, N), zeros(ComplexF64, N), zeros(Float64, N)
   Sx₀ = expect(ψ₀, "Sx", sites = 1 : N)
@@ -105,6 +112,7 @@ let
   # @show Sz_R
   # println("")
   
+  
   optimization_gates = ITensor[]
   for idx in 1:2:(N-1)
     s₁ = sites[idx]
@@ -115,45 +123,46 @@ let
   # @show optimization_gates
   # @show typeof(optimization_gates)
   # @show length(optimization_gates)
-  set_copy = deepcopy(optimization_gates)
-
-
   
+
   cost_function, reference = Vector{Float64}(undef, nsweeps), Vector{Float64}(undef, nsweeps)
+  optimization_trace, fidelity_trace = Float64[], Float64[]
   for iteration in 1 : nsweeps
     println(repeat("#", 200))
     println("Iteration = $iteration: forward sweep")
-    if iteration == 1
-      starting_idx = 1
-    else
-      starting_idx = 2
-    end
+
     
-    for idx in starting_idx : length(optimization_gates)
-      # Contract psi_L and the two-qubit gate to form a new MPS
+    for idx in 1 : length(optimization_gates)
+      # Set up the gate set without the target gate
       tmp_Gates = deepcopy(optimization_gates)
-      gate₀ = tmp_Gates[idx]
-      tmp_ψ = deepcopy(ψ₀)
-      # if idx != 1
-      #   @show optimization_gates[idx - 1]
-      # end
-      # @show set_copy[idx - 1]
+      target_gate = tmp_Gates[idx]
+      # @show target_gate
 
-      @show length(tmp_Gates)
+      
+      # @show length(tmp_Gates)
       deleteat!(tmp_Gates, idx)
-      @show length(tmp_Gates)
-
-      if gate₀ in tmp_Gates
+      if target_gate in tmp_Gates
         error("The gate to be optimized is still in the temporary gate set!")
       end
+      # @show tmp_Gates
+      # @show length(tmp_Gates)
 
+
+      # An alternative way to set up the gate set without the target set
+      # gate_indices = collect(1 : length(optimization_gates))
+      # gate_set_indices = deleteat!(gate_indices, idx)
+      # tmp_Gates = ITensor[optimization_gates[i] for i in gate_set_indices]
+      # target_gate = optimization_gates[idx]
+
+
+      # @show expect(ψ₀, "Sz", sites = 1 : length(ψ₀)) 
       tmp_ψ = apply(tmp_Gates, ψ₀; cutoff=cutoff)
-      # tmp_ψ = apply(tmp_Gates, tmp_ψ; cutoff=cutoff)
-      # normalize!(tmp_ψ)
+      normalize!(tmp_ψ)
       i₁, i₂ = siteind(tmp_ψ, 2 * idx - 1), siteind(tmp_ψ, 2 * idx)
       # @show i₁, i₂
       # println("")
 
+      
       # Set specific site indices to be primed
       # prime!(ψ_R, siteind(ψ_R, 2 * idx - 1))
       # prime!(ψ_R, siteind(ψ_R, 2 * idx))
@@ -163,11 +172,16 @@ let
       # @show j₁, j₂
       # println("")
 
+
+      # @show expect(ψ₀, "Sz", sites = 1 : length(ψ₀))
+      test₁ = apply([tmp_Gates[1]], ψ₀; cutoff=cutoff)
+      test₂ = apply(optimization_gates, ψ₀; cutoff=cutoff)
+
       
       # # Compute the environment tensors from scratch
       # T = ITensor(1)
       # for j in 1:length(tmp_ψ)
-      #   T *= (tmp_ψ[j] * ψ_R[j])
+      #   T *= (tmp_ψ[j] * dag(ψ_R[j]))
       # end
      
       #*****************************************************************************************************
@@ -175,7 +189,7 @@ let
       envL = ITensor(1)
       for j in 1:(2 * idx - 2)
         envL *= tmp_ψ[j]
-        envL *= ψ_R[j]
+        envL *= dag(ψ_R[j])
         println("")
         println("Forward sweep")
         @show j
@@ -186,7 +200,7 @@ let
       envR = ITensor(1)
       for j in N:-1:(2 * idx + 1)
         envR *= tmp_ψ[j]
-        envR *= ψ_R[j]
+        envR *= dag(ψ_R[j])
       
         println("")
         println("Backward sweep")
@@ -194,45 +208,37 @@ let
         println("")
       end
 
-      # envR = ITensor(1)
-      # for j in N:-1:(2 * idx + 3)
-      #   # if j == N
-      #   #   envR = tmp_ψ[j]
-      #   #   envR *= ψ_R[j]
-      #   # else
-      #   #   envR *= tmp_ψ[j]
-      #   #   envR *= ψ_R[j]
-      #   # end
-      #   println("")
-      #   println("Backward sweep")
-      #   @show j
-      #   if j == N
-      #     envR = tmp_ψ[j] * ψ_R[j]
-      #   else
-      #     envR *= (tmp_ψ[j] * ψ_R[j])
-      #   end
-      #   println("")
-      # end
-
 
       T = ITensor()
-      T = envL * tmp_ψ[2 * idx - 1] * ψ_R[2 * idx - 1]
-      T *= (tmp_ψ[2 * idx] * ψ_R[2 * idx])
+      T = envL * tmp_ψ[2 * idx - 1] * dag(ψ_R[2 * idx - 1])
+      T *= (tmp_ψ[2 * idx] * dag(ψ_R[2 * idx]))
       T *= envR
       # @show inds(T)
       noprime!(ψ_R)
 
+
       
       envScalar1 = ITensor(1)
-      for idx in 1 : length(tmp_ψ)
-        envScalar1 *= (tmp_ψ[idx] * ψ_R[idx])
+      for env_idx in 1 : N
+        envScalar1 *= (tmp_ψ[env_idx] * dag(ψ_R[env_idx]))
       end
 
       envScalar2 = ITensor(1)
       envR_copy = deepcopy(envR)
       noprime!(envR_copy)
-      envScalar2 = envL * envR_copy * (tmp_ψ[2 * idx - 1] * ψ_R[2 * idx - 1]) * (tmp_ψ[2 * idx] * ψ_R[2 * idx])
-      #*****************************************************************************************************
+      envScalar2 = envL * envR_copy * (tmp_ψ[2 * idx - 1] * dag(ψ_R[2 * idx - 1])) * (tmp_ψ[2 * idx] * dag(ψ_R[2 * idx]))
+
+      envScalar3 = ITensor(1)
+      for env_idx in 1 : N
+        envScalar3 *= (test₁[env_idx] * dag(ψ_R[env_idx]))
+      end
+
+      envScalar4 = ITensor(1)
+      for env_idx in 1 : N
+        envScalar4 *= (test₂[env_idx] * dag(ψ_R[env_idx]))
+      end
+      #*************************************************************************************************************************
+
       
       # @show T
       # @show inds(T)
@@ -242,20 +248,23 @@ let
       # @show inds(gate₀)
       # println("")
       
-      # tmpU, tmpS, tmpV = svd(T, i₁, i₂)
-      # T_transpose = dag(tmpV) * tmpS * dag(tmpU)
      
-      gates_set = push!(deepcopy(tmp_Gates), gate₀)
-      @show real((T * gate₀)[1])
-      @show real(envScalar1[1])
-      @show real(envScalar2[1])
-      @show compute_cost_function(ψ₀, ψ_R, optimization_gates)
-      @show compute_cost_function(ψ₀, ψ_R, gates_set)
-      @show compute_cost_function(ψ₀, ψ_R, tmp_Gates)
+      # @show real((T * dag(target_gate))[1])
+      @show real((T * target_gate)[1])
+      # @show real(envScalar1[1])
+      # @show real(envScalar2[1])
+      # @show real(envScalar3[1])
+      # @show real(envScalar4[1])
+      @show compute_cost_function(ψ₀, ψ_R, optimization_gates, cutoff)
+      # @show compute_cost_function(ψ₀, ψ_R, tmp_Gates, cutoff)
+      # @show compute_cost_function(ψ₀, ψ_R, [tmp_Gates[1]], cutoff)
+      append!(optimization_trace, real((T * target_gate)[1]))
+      append!(fidelity_trace, compute_cost_function(ψ₀, ψ_R, optimization_gates, cutoff))
       println("")
 
       
       # U, S, V = svd(T, (i₁, j₁))
+      # U, S, V = svd(dag(T), (i₁, i₂))
       U, S, V = svd(T, (i₁, i₂))
       @show T ≈ U * S * V
       
@@ -270,94 +279,97 @@ let
       # updated_T = dag(V) * S * dag(U)
       
       
-      # TO-DO: figure out the row indices used in svd
+      # Perform SVD and update the target gate
       updated_T = dag(V) * delta(inds(S)[1], inds(S)[2]) * dag(U)
-      optimization_gates[idx] = updated_T
-
-      # @show dag(updated_T) * updated_T
-      println("")
-      # @show updated_T
       # @show optimization_gates[idx]
+      @show optimization_gates[idx] == updated_T
+      optimization_gates[idx] = updated_T
+      # @show dag(updated_T) * updated_T
+      # @show optimization_gates[idx]
+      @show optimization_gates[idx] == updated_T
+      println("")
     end
     println("")
     
     
-    println(repeat("#", 200))
-    println("Iteration = $iteration: backward sweep")
-    for idx in length(optimization_gates)-1:-1:1
-      # @show optimization_gates[idx]
+    # println(repeat("#", 200))
+    # println("Iteration = $iteration: backward sweep")
+    # for idx in length(optimization_gates)-1:-1:1
+    #   # @show optimization_gates[idx]
       
-      # Contract psi_L and the two-qubit gate to form a new MPS
-      tmp_Gates = deepcopy(optimization_gates)
-      gate₀ = tmp_Gates[idx]
-      deleteat!(tmp_Gates, idx)
-      tmp_ψ = apply(tmp_Gates, ψ₀; cutoff=cutoff)
-      # normalize!(tmp_ψ)
-      i₁, i₂ = siteind(tmp_ψ, 2 * idx - 1), siteind(tmp_ψ, 2 * idx)
-      # @show i₁, i₂
-      # println("")
+    #   # Contract psi_L and the two-qubit gate to form a new MPS
+    #   tmp_Gates = deepcopy(optimization_gates)
+    #   gate₀ = tmp_Gates[idx]
+    #   deleteat!(tmp_Gates, idx)
+    #   tmp_ψ = apply(tmp_Gates, ψ₀; cutoff=cutoff)
+    #   # normalize!(tmp_ψ)
+    #   i₁, i₂ = siteind(tmp_ψ, 2 * idx - 1), siteind(tmp_ψ, 2 * idx)
+    #   # @show i₁, i₂
+    #   # println("")
 
-      # Set specific site indices to be primed
-      # prime!(ψ_R, siteind(ψ_R, 2 * idx - 1))
-      # prime!(ψ_R, siteind(ψ_R, 2 * idx))
-      prime!(ψ_R[2 * idx - 1], tags = "Site")
-      prime!(ψ_R[2 * idx], tags = "Site")
-      j₁, j₂ = siteind(ψ_R, 2 * idx - 1), siteind(ψ_R, 2 * idx)
-      # @show j₁, j₂
-      # println("")
+    #   # Set specific site indices to be primed
+    #   # prime!(ψ_R, siteind(ψ_R, 2 * idx - 1))
+    #   # prime!(ψ_R, siteind(ψ_R, 2 * idx))
+    #   prime!(ψ_R[2 * idx - 1], tags = "Site")
+    #   prime!(ψ_R[2 * idx], tags = "Site")
+    #   j₁, j₂ = siteind(ψ_R, 2 * idx - 1), siteind(ψ_R, 2 * idx)
+    #   # @show j₁, j₂
+    #   # println("")
 
 
-      T = ITensor()
-      for j in 1:length(tmp_ψ)
-        if j == 1
-          T = tmp_ψ[j] * ψ_R[j]
-        else
-          T *= (tmp_ψ[j] * ψ_R[j])
-        end
-      end
-      noprime!(ψ_R)
+    #   T = ITensor()
+    #   for j in 1:length(tmp_ψ)
+    #     if j == 1
+    #       T = tmp_ψ[j] * ψ_R[j]
+    #     else
+    #       T *= (tmp_ψ[j] * ψ_R[j])
+    #     end
+    #   end
+    #   noprime!(ψ_R)
 
       
-      @show real((T * dag(gate₀)))[1]
-      @show compute_cost_function(ψ₀, ψ_R, optimization_gates)
-      println("")
+    #   @show real((T * dag(gate₀)))[1]
+    #   @show compute_cost_function(ψ₀, ψ_R, optimization_gates)
+    #   println("")
       
-      # U, S, V = svd(T, (i₁, j₁))
-      U, S, V = svd(T, (i₁, i₂))
-      @show T ≈ U * S * V
+    #   # U, S, V = svd(T, (i₁, j₁))
+    #   U, S, V = svd(T, (i₁, i₂))
+    #   @show T ≈ U * S * V
 
 
-      # # @show S
-      # S[1, 1] = 1.0
-      # S[2, 2] = 1.0
-      # S[3, 3] = 1.0
-      # S[4, 4] = 1.0
-      # # @show S
+    #   # # @show S
+    #   # S[1, 1] = 1.0
+    #   # S[2, 2] = 1.0
+    #   # S[3, 3] = 1.0
+    #   # S[4, 4] = 1.0
+    #   # # @show S
       
       
-      # updated_T = U * S * V
-      # updated_T = dag(V) * S * dag(U)
-      updated_T = dag(V) * delta(inds(S)[1], inds(S)[2]) * dag(U)
-      optimization_gates[idx] = updated_T
-      # @show dag(updated_T) * updated_T
-      # @show inds(updated_T)
-      println("")
-    end
-    println("")
+    #   # updated_T = U * S * V
+    #   # updated_T = dag(V) * S * dag(U)
+    #   updated_T = dag(V) * delta(inds(S)[1], inds(S)[2]) * dag(U)
+    #   optimization_gates[idx] = updated_T
+    #   # @show dag(updated_T) * updated_T
+    #   # @show inds(updated_T)
+    #   println("")
+    # end
+    # println("")
 
     # Compute the cost function after each sweep
-    cost_function[iteration] = compute_cost_function(ψ₀, ψ_R, optimization_gates)
-    reference[iteration] = compute_cost_function(ψ₀, ψ_R, gates)
+    cost_function[iteration] = compute_cost_function(ψ₀, ψ_R, optimization_gates, cutoff)
+    reference[iteration] = compute_cost_function(ψ₀, ψ_R, gates, cutoff)
   end
 
   @show cost_function
   @show reference 
   
-  # output_filename = "compilation_N$(N)_v3.h5"
-  # h5open(output_filename, "w") do file
-  #   write(file, "cost function", cost_function)
-  #   write(file, "reference", reference)
-  # end
+  output_filename = "compilation_N$(N)_v2.h5"
+  h5open(output_filename, "w") do file
+    write(file, "cost function", cost_function)
+    write(file, "reference", reference)
+    write(file, "optimization trace", optimization_trace)
+    write(file, "fidelity trace", fidelity_trace)
+  end
   
   return
 end
