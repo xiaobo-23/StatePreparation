@@ -4,7 +4,7 @@ Compilation.jl is a high-performance tensor network framework for preparing the 
 
 Kitaev.jl is actively evolving, with planned extensions including compressing the time-evoltion quantum circuit per step. 
 
-![Circuir Compilation](docs/circuit_compilation.pdf)
+![Circuir Compilation](docs/circuit_compilation.png)
 
 
 For more information and detailed usage examples, please refer to the documentation (coming soon).
