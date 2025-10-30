@@ -23,11 +23,11 @@ OMP_NUM_THREADS = 8
 @show BLAS.get_num_threads()
 
 
-const N = 12 # Total number of qubits
+const N = 8 # Total number of qubits
 const J₁ = 1.0
-const τ = 0.2
+const τ = 0.5
 const cutoff = 1e-12
-const nsweeps = 100
+const nsweeps = 2
 const time_machine = TimerOutput()  # Timing and profiling
 
 
@@ -95,7 +95,7 @@ let
 
   ψ_R = deepcopy(ψ₀)                        # Create a copy of the original MPS to apply gates
   ψ_R = apply(gates, ψ_R; cutoff=cutoff)
-  # normalize!(ψ_R)
+  normalize!(ψ_R)
   
   Sx_R, Sz_R = zeros(Float64, N), zeros(Float64, N)
   Sx_R = expect(ψ_R, "Sx", sites = 1 : N)
@@ -133,26 +133,26 @@ let
 
     
     for idx in 1 : length(optimization_gates)
-      # Set up the gate set without the target gate
-      tmp_Gates = deepcopy(optimization_gates)
-      target_gate = tmp_Gates[idx]
-      # @show target_gate
+      # # Set up the gate set without the target gate
+      # tmp_Gates = deepcopy(optimization_gates)
+      # target_gate = tmp_Gates[idx]
+      # # @show target_gate
 
       
-      # @show length(tmp_Gates)
-      deleteat!(tmp_Gates, idx)
-      if target_gate in tmp_Gates
-        error("The gate to be optimized is still in the temporary gate set!")
-      end
-      # @show tmp_Gates
-      # @show length(tmp_Gates)
+      # # @show length(tmp_Gates)
+      # deleteat!(tmp_Gates, idx)
+      # if target_gate in tmp_Gates
+      #   error("The gate to be optimized is still in the temporary gate set!")
+      # end
+      # # @show tmp_Gates
+      # # @show length(tmp_Gates)
 
 
       # An alternative way to set up the gate set without the target set
-      # gate_indices = collect(1 : length(optimization_gates))
-      # gate_set_indices = deleteat!(gate_indices, idx)
-      # tmp_Gates = ITensor[optimization_gates[i] for i in gate_set_indices]
-      # target_gate = optimization_gates[idx]
+      gate_indices = collect(1 : length(optimization_gates))
+      gate_set_indices = deleteat!(gate_indices, idx)
+      tmp_Gates = ITensor[optimization_gates[i] for i in gate_set_indices]
+      target_gate = optimization_gates[idx]
 
 
       # @show expect(ψ₀, "Sz", sites = 1 : length(ψ₀)) 
@@ -175,9 +175,11 @@ let
 
       # @show expect(ψ₀, "Sz", sites = 1 : length(ψ₀))
       test₁ = apply([tmp_Gates[1]], ψ₀; cutoff=cutoff)
-      test₂ = apply(optimization_gates, ψ₀; cutoff=cutoff)
-
+      normalize!(test₁)
       
+      test₂ = apply(optimization_gates, ψ₀; cutoff=cutoff)
+      normalize!(test₂)
+
       # # Compute the environment tensors from scratch
       # T = ITensor(1)
       # for j in 1:length(tmp_ψ)
@@ -209,62 +211,68 @@ let
       end
 
 
-      T = ITensor()
-      T = envL * tmp_ψ[2 * idx - 1] * dag(ψ_R[2 * idx - 1])
-      T *= (tmp_ψ[2 * idx] * dag(ψ_R[2 * idx]))
-      T *= envR
-      # @show inds(T)
+      # T = ITensor()
+      # T = envL * tmp_ψ[2 * idx - 1] * dag(ψ_R[2 * idx - 1])
+      # T *= (tmp_ψ[2 * idx] * dag(ψ_R[2 * idx]))
+      # T *= envR
+      # # @show inds(T)
+      # noprime!(ψ_R)
+
+      
+      # Compute the environment tensors from scratch
+      T = ITensor(1)
+      for idx in 1:N
+        T *= (tmp_ψ[idx] * dag(ψ_R[idx]))
+      end
       noprime!(ψ_R)
 
 
-      
+      # Compute several traces for debugging purposes
       envScalar1 = ITensor(1)
       for env_idx in 1 : N
         envScalar1 *= (tmp_ψ[env_idx] * dag(ψ_R[env_idx]))
       end
 
+      
       envScalar2 = ITensor(1)
       envR_copy = deepcopy(envR)
       noprime!(envR_copy)
       envScalar2 = envL * envR_copy * (tmp_ψ[2 * idx - 1] * dag(ψ_R[2 * idx - 1])) * (tmp_ψ[2 * idx] * dag(ψ_R[2 * idx]))
 
+      
       envScalar3 = ITensor(1)
       for env_idx in 1 : N
         envScalar3 *= (test₁[env_idx] * dag(ψ_R[env_idx]))
       end
 
+      
       envScalar4 = ITensor(1)
       for env_idx in 1 : N
         envScalar4 *= (test₂[env_idx] * dag(ψ_R[env_idx]))
       end
       #*************************************************************************************************************************
 
-      
-      # @show T
-      # @show inds(T)
-      # println("")
-      
-      # # @show gate₀
-      # @show inds(gate₀)
-      # println("")
-      
+    
+      @show inds(T)
+      @show inds(target_gate)
+      println("")
+
      
-      # @show real((T * dag(target_gate))[1])
+      # @show real((target_gate * dag(T))[1])
       @show real((T * target_gate)[1])
-      # @show real(envScalar1[1])
-      # @show real(envScalar2[1])
-      # @show real(envScalar3[1])
-      # @show real(envScalar4[1])
+      @show real(envScalar1[1])
+      @show real(envScalar2[1])
+      @show real(envScalar3[1])
+      @show real(envScalar4[1])
       @show compute_cost_function(ψ₀, ψ_R, optimization_gates, cutoff)
-      # @show compute_cost_function(ψ₀, ψ_R, tmp_Gates, cutoff)
-      # @show compute_cost_function(ψ₀, ψ_R, [tmp_Gates[1]], cutoff)
+      @show compute_cost_function(ψ₀, ψ_R, tmp_Gates, cutoff)
+      @show compute_cost_function(ψ₀, ψ_R, [tmp_Gates[1]], cutoff)
       append!(optimization_trace, real((T * target_gate)[1]))
       append!(fidelity_trace, compute_cost_function(ψ₀, ψ_R, optimization_gates, cutoff))
       println("")
 
       
-      # U, S, V = svd(T, (i₁, j₁))
-      # U, S, V = svd(dag(T), (i₁, i₂))
+      # Use Evenbly-Vidal method to perform SVD on the environment tensors
       U, S, V = svd(T, (i₁, i₂))
       @show T ≈ U * S * V
       
@@ -279,7 +287,7 @@ let
       # updated_T = dag(V) * S * dag(U)
       
       
-      # Perform SVD and update the target gate
+      # Update the target two-qubit gate 
       updated_T = dag(V) * delta(inds(S)[1], inds(S)[2]) * dag(U)
       # @show optimization_gates[idx]
       @show optimization_gates[idx] == updated_T
@@ -292,68 +300,60 @@ let
     println("")
     
     
-    # println(repeat("#", 200))
-    # println("Iteration = $iteration: backward sweep")
-    # for idx in length(optimization_gates)-1:-1:1
-    #   # @show optimization_gates[idx]
+    # Backward propagation in one sweep
+    println(repeat("#", 200))
+    println("Iteration = $iteration: backward sweep")
+    for idx in length(optimization_gates):-1:1
+      # Set up the target gate and the gate set without the target gate
+      tmp_Gates = deepcopy(optimization_gates)
+      target_gate = tmp_Gates[idx]
+      deleteat!(tmp_Gates, idx)
+      if target_gate in tmp_Gates
+        error("The gate to be optimized is still in the temporary gate set!")
+      end
       
-    #   # Contract psi_L and the two-qubit gate to form a new MPS
-    #   tmp_Gates = deepcopy(optimization_gates)
-    #   gate₀ = tmp_Gates[idx]
-    #   deleteat!(tmp_Gates, idx)
-    #   tmp_ψ = apply(tmp_Gates, ψ₀; cutoff=cutoff)
-    #   # normalize!(tmp_ψ)
-    #   i₁, i₂ = siteind(tmp_ψ, 2 * idx - 1), siteind(tmp_ψ, 2 * idx)
-    #   # @show i₁, i₂
-    #   # println("")
 
-    #   # Set specific site indices to be primed
-    #   # prime!(ψ_R, siteind(ψ_R, 2 * idx - 1))
-    #   # prime!(ψ_R, siteind(ψ_R, 2 * idx))
-    #   prime!(ψ_R[2 * idx - 1], tags = "Site")
-    #   prime!(ψ_R[2 * idx], tags = "Site")
-    #   j₁, j₂ = siteind(ψ_R, 2 * idx - 1), siteind(ψ_R, 2 * idx)
-    #   # @show j₁, j₂
-    #   # println("")
-
-
-    #   T = ITensor()
-    #   for j in 1:length(tmp_ψ)
-    #     if j == 1
-    #       T = tmp_ψ[j] * ψ_R[j]
-    #     else
-    #       T *= (tmp_ψ[j] * ψ_R[j])
-    #     end
-    #   end
-    #   noprime!(ψ_R)
-
+      # Apply the gate set without the target gate and grab all the indices needed to compute the environment tensors 
+      tmp_ψ = apply(tmp_Gates, ψ₀; cutoff=cutoff)
+      normalize!(tmp_ψ)
+      i₁, i₂ = siteind(tmp_ψ, 2 * idx - 1), siteind(tmp_ψ, 2 * idx)
       
-    #   @show real((T * dag(gate₀)))[1]
-    #   @show compute_cost_function(ψ₀, ψ_R, optimization_gates)
-    #   println("")
-      
-    #   # U, S, V = svd(T, (i₁, j₁))
-    #   U, S, V = svd(T, (i₁, i₂))
-    #   @show T ≈ U * S * V
+      prime!(ψ_R[2 * idx - 1], tags = "Site")
+      prime!(ψ_R[2 * idx], tags = "Site")
+      j₁, j₂ = siteind(ψ_R, 2 * idx - 1), siteind(ψ_R, 2 * idx)
+      # @show i₁, i₂, j₁, j₂
+      # println("")
 
 
-    #   # # @show S
-    #   # S[1, 1] = 1.0
-    #   # S[2, 2] = 1.0
-    #   # S[3, 3] = 1.0
-    #   # S[4, 4] = 1.0
-    #   # # @show S
+      # Compute the environment tensors from scratch
+      T = ITensor(1)
+      for j in 1:length(tmp_ψ)
+        T *= (tmp_ψ[j] * dag(ψ_R[j]))
+      end
+      noprime!(ψ_R)
+
+
+      # Compute trace of the environment tensor times the target gate 
+      @show real((T * target_gate)[1])
+      @show compute_cost_function(ψ₀, ψ_R, optimization_gates)
+      println("")
       
-      
-    #   # updated_T = U * S * V
-    #   # updated_T = dag(V) * S * dag(U)
-    #   updated_T = dag(V) * delta(inds(S)[1], inds(S)[2]) * dag(U)
-    #   optimization_gates[idx] = updated_T
-    #   # @show dag(updated_T) * updated_T
-    #   # @show inds(updated_T)
-    #   println("")
-    # end
-    # println("")
+
+      # Use Evenbly-Vidal algorithm to perform SVD on the environment tensors
+      U, S, V = svd(T, (i₁, i₂))
+      @show T ≈ U * S * V      
+
+      # Update the target two-qubit gate
+      updated_T = dag(V) * delta(inds(S)[1], inds(S)[2]) * dag(U)
+      # @show optimization_gates[idx] == updated_T
+      optimization_gates[idx] = updated_T
+      # @show optimization_gates[idx] == updated_T
+      println("")
+
+    end
+    println("")
+
+
 
     # Compute the cost function after each sweep
     cost_function[iteration] = compute_cost_function(ψ₀, ψ_R, optimization_gates, cutoff)
@@ -363,13 +363,13 @@ let
   @show cost_function
   @show reference 
   
-  output_filename = "compilation_N$(N)_v2.h5"
-  h5open(output_filename, "w") do file
-    write(file, "cost function", cost_function)
-    write(file, "reference", reference)
-    write(file, "optimization trace", optimization_trace)
-    write(file, "fidelity trace", fidelity_trace)
-  end
+  # output_filename = "compilation_N$(N)_v2.h5"
+  # h5open(output_filename, "w") do file
+  #   write(file, "cost function", cost_function)
+  #   write(file, "reference", reference)
+  #   write(file, "optimization trace", optimization_trace)
+  #   write(file, "fidelity trace", fidelity_trace)
+  # end
   
   return
-end
+end 
