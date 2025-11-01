@@ -13,22 +13,24 @@ using Random
 
 
 # Define a function to compute the cost function given two MPS and a set of unitaries
-function compute_cost_function(input_ψ_L::MPS, input_ψ_R::MPS, input_gates::Vector{ITensor}, input_cutoff::Float64 = 1e-10)
-  intermediate_psi = apply(input_gates, input_ψ_L; cutoff=input_cutoff)
-  normalize!(intermediate_psi)
+function compute_cost_function(psi_L::MPS, psi_R::MPS, input_gates::Vector{ITensor}, 
+  input_cutoff::Float64 = 1e-10)
+  psi_intermediate = apply(input_gates, psi_L; cutoff=input_cutoff)
+  normalize!(psi_intermediate)
 
   # fidelity = ITensor(1)
-  # for idx₁ in 1:length(intermediate_psi)
-  #   fidelity *= (intermediate_psi[idx₁] * dag(input_ψ_R[idx₁]))
+  # for idx₁ in 1:length(psi_intermediate)
+  #   fidelity *= (psi_intermediate[idx₁] * dag(psi_R[idx₁]))
   # end
-  # @show real(fidelity[1]) ≈ real(inner(intermediate_psi, input_ψ_R)), real(fidelity[1]), real(inner(intermediate_psi, input_ψ_R)) 
-  return real(inner(intermediate_psi, input_ψ_R))
+  # @show real(fidelity[1]) ≈ real(inner(psi_intermediate, psi_R)), real(fidelity[1]), real(inner(psi_intermediate, psi_R)) 
+  
+  return real(inner(psi_intermediate, psi_R))
 end
 
 
 
 # Define a function to update a single two-qubit gate using Evenbly-Vidal algorithm
-function update_single_gate(ψ_L::MPS, ψ_R::MPS, gates_set::Vector{ITensors}, 
+function update_single_gate(ψ_L::MPS, ψ_R::MPS, gates_set::Vector{ITensor}, 
   idx::Int64, idx₁::Int64, idx₂::Int64, input_cutoff::Float64 = 1e-10)
   gates_copy = deepcopy(gates_set)
   target = gates_copy[idx]
@@ -90,6 +92,15 @@ function update_single_gate(ψ_L::MPS, ψ_R::MPS, gates_set::Vector{ITensors},
   noprime!(ψ_R)
 
 
+  # A simplified version to compute the environment tensor T but requires more memory
+  # # Compute the environment tensors from scratch
+  # T = ITensor(1)
+  # for j in 1:length(ψ_intermediate)
+  #   T *= (ψ_intermediate[j] * dag(ψ_R[j]))
+  # end
+  # noprime!(ψ_R)
+
+
   # Debugging procedure to make sure the environment tensor is compute correctly
   # @show inds(T)
   # @show inds(target_gate)
@@ -108,5 +119,7 @@ function update_single_gate(ψ_L::MPS, ψ_R::MPS, gates_set::Vector{ITensors},
   updated_T = dag(V) * delta(inds(S)[1], inds(S)[2]) * dag(U)
   
   
+  # Return the updated two-qubit gate, the trace of the product of the target gate and environment tensor
+  # and the cost function computed before updating the target gate 
   return updated_T, tmp_trace, tmp_cost
 end 
