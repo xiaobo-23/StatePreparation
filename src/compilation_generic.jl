@@ -89,39 +89,24 @@ let
   #*****************************************************************************************************
   
   
+  
   #*****************************************************************************************************
   #*****************************************************************************************************
-  # # Construct a sequence of two-qubit gates as the target unitary operatos
-  # target_pairs = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]]
+  # # Construct a layer of two-qubit gates using the Heisenberg interaction as the reference unitary operators 
   # gates = ITensor[]
-  # for idx in 1 : length(target_pairs)
-  #   idx₁, idx₂ = target_pairs[idx][1], target_pairs[idx][2]
+  # for idx in 1:2:N-1
+  #   idx₁, idx₂ = idx, idx + 1
   #   s₁ = sites[idx₁]
   #   s₂ = sites[idx₂]
 
   #   # Define a two-qubit gate, using the Heisenberg interaction as an example 
-  #   hj = 1/2 * J₁ * op("S+", s₁) * op("S-", s₂) + 1/2 * J₁ * op("S-", s₁) * op("S+", s₂) + J₁ * op("Sz", s₁) * op("Sz", s₂)
+  #   hj = 1/2 * J₁ * op("S+", s₁) * op("S-", s₂) + 1/2 * J₁ * op("S-", s₁) * op("S+", s₂) 
+  #     + J₁ * op("Sz", s₁) * op("Sz", s₂)
   #   Gj = exp(-im * τ/2 * hj)
   #   push!(gates, Gj)
+  #   @show inds(Gj)
   # end
   # # @show gates
-
-
-
-  # Construct a sequence of two-qubit gates as the target unitary operators
-  gates = ITensor[]
-  for idx in 1:2:N-1
-    idx₁, idx₂ = idx, idx + 1
-    s₁ = sites[idx₁]
-    s₂ = sites[idx₂]
-
-    # Define a two-qubit gate, using the Heisenberg interaction as an example 
-    hj = 1/2 * J₁ * op("S+", s₁) * op("S-", s₂) + 1/2 * J₁ * op("S-", s₁) * op("S+", s₂) + J₁ * op("Sz", s₁) * op("Sz", s₂)
-    Gj = exp(-im * τ/2 * hj)
-    push!(gates, Gj)
-    @show inds(Gj)
-  end
-  # @show gates
 
 
   # Construct a set of two-qubit gates with random initialization
@@ -132,7 +117,9 @@ let
   #                   [[1, 2], [3, 6], [8, 10], [11, 12]]
   #                 ]
   indices_pairs = [
-                    [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]]
+                    # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]]
+                    # [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11]]
+                    [[1, 2], [3, 8], [9, 12]]
                   ]
   gates_set = []
   for idx in 1 : length(indices_pairs)
@@ -153,9 +140,38 @@ let
   # @show gates_set
 
 
+  # Construct a sequence of two-qubit gates as the target unitary operators
+  reference_set = []
+  for idx in 1:length(indices_pairs)
+    gates = ITensor[]
+    pairs = indices_pairs[idx]
+
+    for index in 1 : length(pairs)
+      idx₁, idx₂ = pairs[index][1], pairs[index][2]
+      @show idx₁, idx₂
+      s₁ = sites[idx₁]
+      s₂ = sites[idx₂]
+
+      # Define a two-qubit gate, using the Heisenberg interaction as an example 
+      hj = 1/2 * J₁ * op("S+", s₁) * op("S-", s₂) + 1/2 * J₁ * op("S-", s₁) * op("S+", s₂) 
+        + J₁ * op("Sz", s₁) * op("Sz", s₂)
+      Gj = exp(-im * τ/2 * hj)
+      push!(gates, Gj)
+    end
+    push!(reference_set, gates)
+    @show inds(gates)
+  end
+  
+  # @show reference_set
+
+
+
   # Apply the sequence of two-qubit gates to the original MPS
   ψ_R = deepcopy(ψ₀)
-  ψ_R = apply(gates, ψ_R; cutoff=cutoff)
+  for index in 1:length(reference_set)
+    @show inds(reference_set[index])
+    ψ_R = apply(reference_set[index], ψ_R; cutoff=cutoff)
+  end
   normalize!(ψ_R)
   
   # Measure local observables (one-point functions)
@@ -261,65 +277,65 @@ let
 
 
 
-    # Optimize two-qubit gates layer by layer in the backward direction if the number of layers is larger than one
-    if length(gates_set) > 1
-      for layer_idx in length(gates_set):-1:1
-        println(repeat("#", 200))
-        println("Optimizing layered two-qubit gate in the backward direction @ layer $layer_idx")
-        println("")
+    # # Optimize two-qubit gates layer by layer in the backward direction if the number of layers is larger than one
+    # if length(gates_set) > 1
+    #   for layer_idx in length(gates_set):-1:1
+    #     println(repeat("#", 200))
+    #     println("Optimizing layered two-qubit gate in the backward direction @ layer $layer_idx")
+    #     println("")
         
-        optimization_gates = gates_set[layer_idx]
-        pairs = indices_pairs[layer_idx]
+    #     optimization_gates = gates_set[layer_idx]
+    #     pairs = indices_pairs[layer_idx]
 
-        # Update gates in one single layer in the forward direction 
-        println(repeat("#", 200))
-        println("Iteration = $iteration: forward sweep")
+    #     # Update gates in one single layer in the forward direction 
+    #     println(repeat("#", 200))
+    #     println("Iteration = $iteration: forward sweep")
 
-        for idx in 1 : length(pairs)
-          optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
-            ψ₀, 
-            ψ_R, 
-            optimization_gates, 
-            idx, 
-            pairs[idx][1], 
-            pairs[idx][2], 
-            cutoff
-          )
+    #     for idx in 1 : length(pairs)
+    #       optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
+    #         ψ₀, 
+    #         ψ_R, 
+    #         optimization_gates, 
+    #         idx, 
+    #         pairs[idx][1], 
+    #         pairs[idx][2], 
+    #         cutoff
+    #       )
 
-          # Store traces and cost function values for analysis
-          append!(trace_history, tmp_trace)
-          append!(optimization_history, tmp_cost)
-        end
-        println("")
+    #       # Store traces and cost function values for analysis
+    #       append!(trace_history, tmp_trace)
+    #       append!(optimization_history, tmp_cost)
+    #     end
+    #     println("")
         
-        # Update gates in one single layer in the backward direction 
-        println(repeat("#", 200))
-        println("Iteration = $iteration: backward sweep")
-        for idx in length(pairs):-1:1
-          optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
-            ψ₀, 
-            ψ_R, 
-            optimization_gates, 
-            idx, 
-            pairs[idx][1], 
-            pairs[idx][2], 
-            cutoff
-          )
+    #     # Update gates in one single layer in the backward direction 
+    #     println(repeat("#", 200))
+    #     println("Iteration = $iteration: backward sweep")
+    #     for idx in length(pairs):-1:1
+    #       optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
+    #         ψ₀, 
+    #         ψ_R, 
+    #         optimization_gates, 
+    #         idx, 
+    #         pairs[idx][1], 
+    #         pairs[idx][2], 
+    #         cutoff
+    #       )
 
-          # Store traces and cost function values for analysis
-          append!(trace_history, tmp_trace)
-          append!(optimization_history, tmp_cost)
-        end
-        println("")
+    #       # Store traces and cost function values for analysis
+    #       append!(trace_history, tmp_trace)
+    #       append!(optimization_history, tmp_cost)
+    #     end
+    #     println("")
 
 
-        # Compute and store the cost function after one full sweep of a specific layer 
-        append!(
-          cost_function, 
-          cost_function_layers(ψ₀, ψ_R, gates_set, cutoff)
-        )
-      end
-    end    
+    #     # Compute and store the cost function after one full sweep of a specific layer 
+    #     append!(
+    #       cost_function, 
+    #       cost_function_layers(ψ₀, ψ_R, gates_set, cutoff)
+    #     )
+    #   end
+    # end    
   end
 
   
@@ -330,12 +346,12 @@ let
   println(repeat("#", 200))
 
 
-  # output_filename = "../data/compilation_heisenberg_N$(N)_v2.h5"
+
+  # output_filename = "../data/compilation_single_layer_N$(N)_v1.h5"
   # h5open(output_filename, "w") do file
   #   write(file, "cost function", cost_function)
-  #   write(file, "optimization trace", optimization_trace)
-  #   write(file, "fidelity trace", fidelity_trace)
-  #   # write(file, "reference", reference)
+  #   write(file, "optimization", optimization_history)
+  #   write(file, "trace", trace_history)
   # end
   
   return 
