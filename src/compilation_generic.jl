@@ -12,6 +12,9 @@ using TimerOutputs
 using Random
 
 
+include("update_gates.jl")
+include("compute_cost_function.jl")
+
 
 # Set up parameters for multithreading and parallelization
 MKL_NUM_THREADS = 8
@@ -24,46 +27,13 @@ OMP_NUM_THREADS = 8
 @show BLAS.get_num_threads()
 
 
-include("update_gates.jl")
-
-
 # Define parameters for the compilation 
 const N = 12  # Total number of qubits
 const J₁ = 1.0
 const τ = 0.5
 const cutoff = 1e-12
-const nsweeps = 25
+const nsweeps = 2
 const time_machine = TimerOutput()  # Timing and profiling
-
-
-# # Define a function to compute the cost function given two MPS and a set of unitaries
-# function compute_cost_function(input_ψ_L::MPS, input_ψ_R::MPS, input_gates::Vector{ITensor}, input_cutoff::Float64 = 1e-10)
-#   intermediate_psi = apply(input_gates, input_ψ_L; cutoff=input_cutoff)
-#   normalize!(intermediate_psi)
-
-#   # fidelity = ITensor(1)
-#   # for idx₁ in 1:length(intermediate_psi)
-#   #   fidelity *= (intermediate_psi[idx₁] * dag(input_ψ_R[idx₁]))
-#   # end
-#   # @show real(fidelity[1]) ≈ real(inner(intermediate_psi, input_ψ_R)), real(fidelity[1]), real(inner(intermediate_psi, input_ψ_R)) 
-#   return real(inner(intermediate_psi, input_ψ_R))
-# end
-
-
-
-
-# Define a function to compute the cost function given two MPS and layers of sets of unitaries
-function cost_function_layers(input_ψ_L::MPS, input_ψ_R::MPS, input_gates::Vector{Any}, input_cutoff::Float64 = 1e-10)
-  for idx in 1 : length(input_gates)
-    layer_of_gates = input_gates[idx]
-    input_ψ_L = apply(layer_of_gates, input_ψ_L; cutoff=input_cutoff)
-  end
-  normalize!(input_ψ_L)
-
-  return real(inner(input_ψ_L, input_ψ_R))
-end
-
-
 
 
 let
@@ -286,8 +256,6 @@ let
       cost_function, 
       cost_function_layers(ψ₀, ψ_R, gates_set, cutoff)
     )
-    # cost_function[iteration] = cost_function_layers(ψ₀, ψ_R, gates_set, cutoff)
-    # reference[iteration] = compute_cost_function(ψ₀, ψ_R, gates, cutoff)
 
 
     # for layer_idx in length(gates_set):-1:1
@@ -493,7 +461,6 @@ let
 
   
   @show cost_function
-  # @show reference 
   
   # output_filename = "../data/compilation_heisenberg_N$(N)_v2.h5"
   # h5open(output_filename, "w") do file

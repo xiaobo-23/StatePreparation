@@ -3,30 +3,13 @@
 ## Use Evenbly-Vidal algorithms to compute the environment tensor and update the target gate
 
 
-
 using ITensors
 using ITensorMPS
 using MKL
 using LinearAlgebra
 using Random
 
-
-
-# Define a function to compute the cost function given two MPS and a set of unitaries
-function compute_cost_function(psi_L::MPS, psi_R::MPS, input_gates::Vector{ITensor}, 
-  input_cutoff::Float64 = 1e-10)
-  psi_intermediate = apply(input_gates, psi_L; cutoff=input_cutoff)
-  normalize!(psi_intermediate)
-
-  # fidelity = ITensor(1)
-  # for idx₁ in 1:length(psi_intermediate)
-  #   fidelity *= (psi_intermediate[idx₁] * dag(psi_R[idx₁]))
-  # end
-  # @show real(fidelity[1]) ≈ real(inner(psi_intermediate, psi_R)), real(fidelity[1]), real(inner(psi_intermediate, psi_R)) 
-  
-  return real(inner(psi_intermediate, psi_R))
-end
-
+include("compute_cost_function.jl")
 
 
 # Define a function to update a single two-qubit gate using Evenbly-Vidal algorithm
