@@ -8,8 +8,8 @@ using HDF5
 using MKL
 using LinearAlgebra
 using TimerOutputs
-using MAT
 using Random
+include("update_gates.jl")
 
 
 # Set up parameters for multithreading and parallelization
@@ -27,7 +27,7 @@ const N = 12  # Total number of qubits
 const J₁ = 1.0
 const τ = 0.5
 const cutoff = 1e-12
-const nsweeps = 100
+const nsweeps = 2
 const time_machine = TimerOutput()  # Timing and profiling
 
 
@@ -74,7 +74,7 @@ let
   sites = siteinds("S=1/2", N; conserve_qns=false)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
   ψ₀ = random_mps(sites, state; linkdims=16)  # Initialize the original random MPS
-  # ψ₀ = MPS(sites, state)                        # Initialize the MPS in a Neel state
+  # ψ₀ = MPS(sites, state)                    # Initialize the MPS in a Neel state
   # @show ψ₀
 
   
@@ -85,32 +85,32 @@ let
   Sz₀ = expect(ψ₀, "Sz", sites = 1 : N)
 
 
-  # Obtain the ground-state wave function of the 1D Heisenberg model via DMRG as the the target MPS
-  # Construct the Hamiltonian of the 1D Heisenberg model as an MPO
-  os = OpSum()
-  for idx = 1:N-1
-      os += 0.5 * J₁, "S+", idx, "S-", idx + 1
-      os += 0.5 * J₁, "S-", idx, "S+", idx + 1
-      os += J₁, "Sz", idx, "Sz", idx + 1
-  end
+  # # Obtain the ground-state wave function of the 1D Heisenberg model via DMRG as the the target MPS
+  # # Construct the Hamiltonian of the 1D Heisenberg model as an MPO
+  # os = OpSum()
+  # for idx = 1:N-1
+  #     os += 0.5 * J₁, "S+", idx, "S-", idx + 1
+  #     os += 0.5 * J₁, "S-", idx, "S+", idx + 1
+  #     os += J₁, "Sz", idx, "Sz", idx + 1
+  # end
 
-  # Starting from a product state and construct the Hamiltonian as an MPO
-  ψ_i = random_mps(sites, state; linkdims=16)
-  H = MPO(os, sites)
+  # # Starting from a product state and construct the Hamiltonian as an MPO
+  # ψ_i = random_mps(sites, state; linkdims=16)
+  # H = MPO(os, sites)
   
-  # Define hyperparameters for DMRG simulation
-  nsweeps_dmrg = 10
-  maxdim = [20, 50, 200, 2000]
-  E, ψ_R = dmrg(H, ψ_i; nsweeps=nsweeps_dmrg, maxdim, cutoff)
+  # # Define hyperparameters for DMRG simulation
+  # nsweeps_dmrg = 10
+  # maxdim = [20, 50, 200, 2000]
+  # E, ψ_R = dmrg(H, ψ_i; nsweeps=nsweeps_dmrg, maxdim, cutoff)
 
-  # Measure local observables (one-point functions)
-  Sx = expect(ψ_R, "Sx", sites = 1 : N)
-  Sz = expect(ψ_R, "Sz", sites = 1 : N)
-  println("")
-  println("One-point function Sx of the original MPS and target MPS:")
-  @show Sx₀
-  @show Sx
-  println("")
+  # # Measure local observables (one-point functions)
+  # Sx = expect(ψ_R, "Sx", sites = 1 : N)
+  # Sz = expect(ψ_R, "Sz", sites = 1 : N)
+  # println("")
+  # println("One-point function Sx of the original MPS and target MPS:")
+  # @show Sx₀
+  # @show Sx
+  # println("")
   #*****************************************************************************************************
   #*****************************************************************************************************
   
@@ -134,28 +134,31 @@ let
 
 
 
-  # # Construct a sequence of two-qubit gates as the target unitary operatos
-  # gates = ITensor[]
-  # for idx in 1:2:N-1
-  #   idx₁, idx₂ = idx, idx + 1
-  #   s₁ = sites[idx₁]
-  #   s₂ = sites[idx₂]
+  # Construct a sequence of two-qubit gates as the target unitary operators
+  gates = ITensor[]
+  for idx in 1:2:N-1
+    idx₁, idx₂ = idx, idx + 1
+    s₁ = sites[idx₁]
+    s₂ = sites[idx₂]
 
-  #   # Define a two-qubit gate, using the Heisenberg interaction as an example 
-  #   hj = 1/2 * J₁ * op("S+", s₁) * op("S-", s₂) + 1/2 * J₁ * op("S-", s₁) * op("S+", s₂) + J₁ * op("Sz", s₁) * op("Sz", s₂)
-  #   Gj = exp(-im * τ/2 * hj)
-  #   push!(gates, Gj)
-  #   @show inds(Gj)
-  # end
-  # # @show gates
+    # Define a two-qubit gate, using the Heisenberg interaction as an example 
+    hj = 1/2 * J₁ * op("S+", s₁) * op("S-", s₂) + 1/2 * J₁ * op("S-", s₁) * op("S+", s₂) + J₁ * op("Sz", s₁) * op("Sz", s₂)
+    Gj = exp(-im * τ/2 * hj)
+    push!(gates, Gj)
+    @show inds(Gj)
+  end
+  # @show gates
 
 
   # Construct a set of two-qubit gates with random initialization
-  indices_pairs = [    
-                    [[1, 4], [5, 8], [9, 12]],
-                    [[1, 2], [5, 10], [11, 12]], 
-                    [[2, 6], [7, 8], [10, 12]], 
-                    [[1, 2], [3, 6], [8, 10], [11, 12]]
+  # indices_pairs = [    
+  #                   # [[1, 4], [5, 8], [9, 12]],
+  #                   [[1, 2], [5, 10], [11, 12]], 
+  #                   [[2, 6], [7, 8], [10, 12]], 
+  #                   [[1, 2], [3, 6], [8, 10], [11, 12]]
+  #                 ]
+  indices_pairs = [
+                    [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]]
                   ]
   gates_set = []
   for idx in 1 : length(indices_pairs)
@@ -175,20 +178,20 @@ let
   end
   # @show gates_set
 
+
+  # Apply the sequence of two-qubit gates to the original MPS
+  ψ_R = deepcopy(ψ₀)
+  ψ_R = apply(gates, ψ_R; cutoff=cutoff)
+  normalize!(ψ_R)
   
-  # # Apply the sequence of two-qubit gates to the original MPS
-  # ψ_R = deepcopy(ψ₀)                        
-  # ψ_R = apply(gates, ψ_R; cutoff=cutoff)
-  # normalize!(ψ_R)
-  
-  # # Measure local observables (one-point functions)
-  # Sx = expect(ψ_R, "Sx", sites = 1 : N)
-  # Sz = expect(ψ_R, "Sz", sites = 1 : N)
-  # println("")
-  # println("Verify the change in local observables after applying the target two-qubit gates:")
-  # @show Sx₀
-  # @show Sx
-  # println("")
+  # Measure local observables (one-point functions)
+  Sx = expect(ψ_R, "Sx", sites = 1 : N)
+  Sz = expect(ψ_R, "Sz", sites = 1 : N)
+  println("")
+  println("Verify the change in local observables after applying the target two-qubit gates:")
+  @show Sx₀
+  @show Sx
+  println("")
   #*****************************************************************************************************
   #*****************************************************************************************************
 
@@ -237,7 +240,7 @@ let
         i₁, i₂ = siteind(tmp_ψ, idx₁), siteind(tmp_ψ, idx₂)
         
         ψ_right = ψ_R
-        for contraction_idx in layer_idx + 1 : length(gates_set)
+        for contraction_idx in length(gates_set):-1:layer_idx + 1
           ψ_right = apply(gates_set[contraction_idx], ψ_right; cutoff=cutoff)
         end
         normalize!(ψ_right)
@@ -371,9 +374,10 @@ let
         tmp_ψ = apply(tmp_Gates, ψ_left; cutoff=cutoff)
         normalize!(tmp_ψ)
         i₁, i₂ = siteind(tmp_ψ, idx₁), siteind(tmp_ψ, idx₂)
-       
+        
+        
         ψ_right = ψ_R
-        for contraction_idx in layer_idx + 1 : length(gates_set)
+        for contraction_idx in length(gates_set):-1:layer_idx + 1
           ψ_right = apply(gates_set[contraction_idx], ψ_right; cutoff=cutoff)
         end
         normalize!(ψ_right)
@@ -625,13 +629,13 @@ let
   @show cost_function
   # @show reference 
   
-  output_filename = "../data/compilation_heisenberg_N$(N)_v2.h5"
-  h5open(output_filename, "w") do file
-    write(file, "cost function", cost_function)
-    write(file, "optimization trace", optimization_trace)
-    write(file, "fidelity trace", fidelity_trace)
-    # write(file, "reference", reference)
-  end
+  # output_filename = "../data/compilation_heisenberg_N$(N)_v2.h5"
+  # h5open(output_filename, "w") do file
+  #   write(file, "cost function", cost_function)
+  #   write(file, "optimization trace", optimization_trace)
+  #   write(file, "fidelity trace", fidelity_trace)
+  #   # write(file, "reference", reference)
+  # end
   
   return 
 end
