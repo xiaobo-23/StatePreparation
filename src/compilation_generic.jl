@@ -32,7 +32,7 @@ const N = 12  # Total number of qubits
 const J₁ = 1.0
 const τ = 0.5
 const cutoff = 1e-12
-const nsweeps = 2
+const nsweeps = 50
 const time_machine = TimerOutput()  # Timing and profiling
 
 
@@ -235,30 +235,29 @@ let
         
         for contraction_idx in length(gates_set):-1:layer_idx + 1
           intermediate_gates = deepcopy(gates_set[contraction_idx])
-          # intermediate_gates = MPO(intermediate_gates, sites)
+          
+          
           for gate_idx in 1 : length(intermediate_gates)
             @show inds(intermediate_gates[gate_idx])[1]
             @show inds(intermediate_gates[gate_idx])[2]
             @show inds(intermediate_gates[gate_idx])[3]
             @show inds(intermediate_gates[gate_idx])[4]
+            intermediate_gates[gate_idx] = dag(intermediate_gates[gate_idx])
             swapprime!(intermediate_gates[gate_idx], 0 => 1)
             @show inds(intermediate_gates[gate_idx])[1]
             @show inds(intermediate_gates[gate_idx])[2]
             @show inds(intermediate_gates[gate_idx])[3]
             @show inds(intermediate_gates[gate_idx])[4]
             println("")
-            
-            # intermediate_gates[gate_idx] = replaceind(
-            #   intermediate_gates[gate_idx], 
-            #   inds(intermediate_gates[gate_idx])[1] => noprime(inds(intermediate_gates[gate_idx])[1]), 
-            #   inds(intermediate_gates[gate_idx])[2] => noprime(inds(intermediate_gates[gate_idx])[2]),
-            #   inds(intermediate_gates[gate_idx])[3] => prime(inds(intermediate_gates[gate_idx])[3]),
-            #   inds(intermediate_gates[gate_idx])[4] => prime(inds(intermediate_gates[gate_idx])[4])
-            # )
-            
-            # ψ_right = contract(ψ_right, intermediate_gates[gate_idx]; cutoff=cutoff)
-            # intermediate_gates[gate_idx] = dag(intermediate_gates[gate_idx])
           end
+
+          for gate_idx in 1 : length(intermediate_gates)
+            @show inds(intermediate_gates[gate_idx])[1]
+            @show inds(intermediate_gates[gate_idx])[2]
+            @show inds(intermediate_gates[gate_idx])[3]
+            @show inds(intermediate_gates[gate_idx])[4] 
+          end
+
           ψ_right = apply(intermediate_gates, ψ_right; cutoff=cutoff)
           # ψ_right = contract(ψ_right, intermediate_gates; cutoff=cutoff)
         end
