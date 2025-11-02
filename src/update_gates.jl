@@ -13,7 +13,7 @@ include("compute_cost_function.jl")
 
 
 # Define a function to update a single two-qubit gate using Evenbly-Vidal algorithm
-function update_single_gate(ψ_L::MPS, ψ_R::MPS, gates_set::Vector{ITensor}, 
+function update_single_gate(psi_left::MPS, psi_right::MPS, gates_set::Vector{ITensor}, 
   idx::Int64, idx₁::Int64, idx₂::Int64, input_cutoff::Float64 = 1e-10)
   gates_copy = deepcopy(gates_set)
   target = gates_copy[idx]
@@ -27,17 +27,17 @@ function update_single_gate(ψ_L::MPS, ψ_R::MPS, gates_set::Vector{ITensor},
 
   
   # Apply the gate set without the target gate to the MPS
-  ψ_intermediate = apply(gates_copy, ψ_L; cutoff=input_cutoff)
-  normalize!(ψ_intermediate)
-  i₁, i₂ = siteind(ψ_intermediate, idx₁), siteind(ψ_intermediate, idx₂)
-  # @show i₁, i₂
-  # println("")
+  psi_intermediate = apply(gates_copy, psi_left; cutoff=input_cutoff)
+  normalize!(psi_intermediate)
+  i₁, i₂ = siteind(psi_intermediate, idx₁), siteind(psi_intermediate, idx₂)
+  @show i₁, i₂
+  println("")
 
-
-  # Prime specific site indices to compute the environment tensor 
-  prime!(ψ_R[idx₁], tags = "Site")
-  prime!(ψ_R[idx₂], tags = "Site")
-  j₁, j₂ = siteind(ψ_R, idx₁), siteind(ψ_R, idx₂)
+  
+  # Prime specific site indices to compute the environment tensor
+  prime!(psi_right[idx₁], tags = "Site")
+  prime!(psi_right[idx₂], tags = "Site")
+  j₁, j₂ = siteind(psi_right, idx₁), siteind(psi_right, idx₂)
   # @show j₁, j₂
   # println("") 
 
@@ -45,34 +45,34 @@ function update_single_gate(ψ_L::MPS, ψ_R::MPS, gates_set::Vector{ITensor},
   # Compute the environment tensor from the first site to site idx₁-1
   envL = ITensor(1)
   for j in 1:idx₁-1
-    envL *= ψ_intermediate[j]
-    envL *= dag(ψ_R[j])
+    envL *= psi_intermediate[j]
+    envL *= dag(psi_right[j])
   end
 
 
   # Compute the environement tensor from site idx₁+1 to site idx₂-1
   envM = ITensor(1)
   for j in idx₁+1:idx₂-1
-    envM *= ψ_intermediate[j]
-    envM *= dag(ψ_R[j])
+    envM *= psi_intermediate[j]
+    envM *= dag(psi_right[j])
   end 
 
 
   # Compute the environment tensor from site idx₂+1 to the last site N
   envR = ITensor(1)
   for j in idx₂ + 1 : N
-    envR *= ψ_intermediate[j]
-    envR *= dag(ψ_R[j])
+    envR *= psi_intermediate[j]
+    envR *= dag(psi_right[j])
   end
 
 
   # Compute the environment tensor E from scratch 
   T = ITensor(1)
-  T = envL * ψ_intermediate[idx₁] * dag(ψ_R[idx₁])
+  T = envL * psi_intermediate[idx₁] * dag(psi_right[idx₁])
   T *= envM
-  T *= (ψ_intermediate[idx₂] * dag(ψ_R[idx₂]))
+  T *= (psi_intermediate[idx₂] * dag(psi_right[idx₂]))
   T *= envR
-  noprime!(ψ_R)
+  noprime!(psi_right)
 
 
   # A simplified version to compute the environment tensor T but requires more memory
@@ -89,13 +89,13 @@ function update_single_gate(ψ_L::MPS, ψ_R::MPS, gates_set::Vector{ITensor},
   # @show inds(target_gate)
   # println("")
   @show tmp_trace = real((T * target)[1])
-  @show tmp_cost  = compute_cost_function(ψ_L, ψ_R, gates_set)
-  println("")
-
+  @show tmp_cost  = compute_cost_function(psi_left, psi_right, gates_set)
   
-  # Perform SVD on the environment tensor T
+
+    # Perform SVD on the environment tensor T
   U, S, V = svd(T, (i₁, i₂))
   @show T ≈ U * S * V
+  println("")
 
 
   # Commpute the updated two-qubit 

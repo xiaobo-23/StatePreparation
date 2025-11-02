@@ -119,7 +119,9 @@ let
   indices_pairs = [
                     # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]]
                     # [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11]]
-                    [[1, 2], [3, 8], [9, 12]]
+                    # [[1, 2], [3, 8], [9, 12]]
+                    [[1, 4], [5, 8], [9, 12]],
+                    [[2, 5], [6, 7], [8, 12]]
                   ]
   gates_set = []
   for idx in 1 : length(indices_pairs)
@@ -196,21 +198,84 @@ let
   for iteration in 1 : nsweeps
     for layer_idx in 1 : length(gates_set)
       println(repeat("#", 200))
-      println("Optimizing layered two-qubit gate in the backward direction @ layer $layer_idx")
       println("")
+      println("Optimization iteration $iteration")
+      println("Optimizing layered two-qubit gate in layer $layer_idx")
+      println("")
+      println(repeat("#", 200))
+
 
       optimization_gates = gates_set[layer_idx]
       pairs = indices_pairs[layer_idx]
 
+      
       # Update each two-qubit gate in forward direction 
-      println(repeat("#", 200))
-      println("Iteration = $iteration: forward sweep")
+      # println(repeat("#", 200))
+      println("")
+      println("FORWARD SWEEP")
+      println("")
 
+      
+      # Contract from the left and right to obtain the effective MPS for the target layer
+      if layer_idx > 1
+        ψ_left = deepcopy(ψ₀)
+        for contraction_idx in 1 : layer_idx - 1
+          ψ_left = apply(gates_set[contraction_idx], ψ_left; cutoff=cutoff)
+        end
+        normalize!(ψ_left)
+      else
+        ψ_left = deepcopy(ψ₀)
+      end
+      # @show inds(ψ_left)
+     
+
+      if length(gates_set) - layer_idx >= 1
+        ψ_right = deepcopy(ψ_R)
+        # prime!(ψ_right; tags = "Site")
+        
+        for contraction_idx in length(gates_set):-1:layer_idx + 1
+          intermediate_gates = deepcopy(gates_set[contraction_idx])
+          # intermediate_gates = MPO(intermediate_gates, sites)
+          for gate_idx in 1 : length(intermediate_gates)
+            @show inds(intermediate_gates[gate_idx])[1]
+            @show inds(intermediate_gates[gate_idx])[2]
+            @show inds(intermediate_gates[gate_idx])[3]
+            @show inds(intermediate_gates[gate_idx])[4]
+            swapprime!(intermediate_gates[gate_idx], 0 => 1)
+            @show inds(intermediate_gates[gate_idx])[1]
+            @show inds(intermediate_gates[gate_idx])[2]
+            @show inds(intermediate_gates[gate_idx])[3]
+            @show inds(intermediate_gates[gate_idx])[4]
+            println("")
+            
+            # intermediate_gates[gate_idx] = replaceind(
+            #   intermediate_gates[gate_idx], 
+            #   inds(intermediate_gates[gate_idx])[1] => noprime(inds(intermediate_gates[gate_idx])[1]), 
+            #   inds(intermediate_gates[gate_idx])[2] => noprime(inds(intermediate_gates[gate_idx])[2]),
+            #   inds(intermediate_gates[gate_idx])[3] => prime(inds(intermediate_gates[gate_idx])[3]),
+            #   inds(intermediate_gates[gate_idx])[4] => prime(inds(intermediate_gates[gate_idx])[4])
+            # )
+            
+            # ψ_right = contract(ψ_right, intermediate_gates[gate_idx]; cutoff=cutoff)
+            # intermediate_gates[gate_idx] = dag(intermediate_gates[gate_idx])
+          end
+          ψ_right = apply(intermediate_gates, ψ_right; cutoff=cutoff)
+          # ψ_right = contract(ψ_right, intermediate_gates; cutoff=cutoff)
+        end
+        # noprime!(ψ_right)
+        normalize!(ψ_right)
+        # @show inds(ψ_right)
+      else
+        ψ_right = deepcopy(ψ_R)
+      end
+      # @show inds(ψ_right)
+      
+     
       for idx in 1:length(pairs)
         # Update each two-qubit gate using Evenbly-Vidal algorithm
         optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
-          ψ₀, 
-          ψ_R, 
+          ψ_left, 
+          ψ_right, 
           optimization_gates, 
           idx, 
           pairs[idx][1], 
@@ -221,39 +286,23 @@ let
         # Store traces and cost function values for analysis
         append!(trace_history, tmp_trace)
         append!(optimization_history, tmp_cost)
-
-        # ψ_left = ψ₀
-        # for contraction_idx in 1 : layer_idx - 1
-        #   ψ_left = apply(gates_set[contraction_idx], ψ_left; cutoff=cutoff)
-        # end
-        # tmp_ψ = apply(tmp_Gates, ψ_left; cutoff=cutoff)
-        # normalize!(tmp_ψ)
-        # i₁, i₂ = siteind(tmp_ψ, idx₁), siteind(tmp_ψ, idx₂)
-        
-        # ψ_right = ψ_R
-        # for contraction_idx in length(gates_set):-1:layer_idx + 1
-        #   ψ_right = apply(gates_set[contraction_idx], ψ_right; cutoff=cutoff)
-        # end
-        # normalize!(ψ_right)
-
-        # # Set specific site indices to be primed
-        # prime!(ψ_right[idx₁], tags = "Site")
-        # prime!(ψ_right[idx₂], tags = "Site")
-        # j₁, j₂ = siteind(ψ_right, idx₁), siteind(ψ_right, idx₂)
-        # # @show i₁, i₂, j₁, j₂
-        # # println("")
       end
       println("")
       
+      
+      
       # Update gates in the backward direction
-      println(repeat("#", 200))
-      println("Iteration = $iteration: backward sweep")
+      # println(repeat("#", 200))
+      println("")
+      println("BACKWARD SWEEP")
+      println("")
+
       
       for idx in length(pairs):-1:1
         # Update each two-qubit gate using Evenbly-Vidal algorithm
         optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
-          ψ₀, 
-          ψ_R, 
+          ψ_left, 
+          ψ_right, 
           optimization_gates, 
           idx, 
           pairs[idx][1], 
@@ -265,6 +314,48 @@ let
         append!(trace_history, tmp_trace)
         append!(optimization_history, tmp_cost)
       end
+      println("")
+
+      # for idx in 1:length(pairs)
+      #   # Update each two-qubit gate using Evenbly-Vidal algorithm
+      #   optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
+      #     ψ₀, 
+      #     ψ_R, 
+      #     optimization_gates, 
+      #     idx, 
+      #     pairs[idx][1], 
+      #     pairs[idx][2], 
+      #     cutoff
+      #   )
+        
+      #   # Store traces and cost function values for analysis
+      #   append!(trace_history, tmp_trace)
+      #   append!(optimization_history, tmp_cost)
+      # end
+      # println("")
+      
+      
+      
+      # # Update gates in the backward direction
+      # println(repeat("#", 200))
+      # println("Iteration = $iteration: backward sweep")
+      
+      # for idx in length(pairs):-1:1
+      #   # Update each two-qubit gate using Evenbly-Vidal algorithm
+      #   optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
+      #     ψ₀, 
+      #     ψ_R, 
+      #     optimization_gates, 
+      #     idx, 
+      #     pairs[idx][1], 
+      #     pairs[idx][2], 
+      #     cutoff
+      #   )
+
+      #   # Store traces and cost function values for analysis
+      #   append!(trace_history, tmp_trace)
+      #   append!(optimization_history, tmp_cost)
+      # end
     
       
       # Compute and store the cost function after one full sweep of a specific layer 
@@ -346,8 +437,8 @@ let
   println(repeat("#", 200))
 
 
-
-  # output_filename = "../data/compilation_single_layer_N$(N)_v1.h5"
+  # Store the optimization data into an HDF5 file
+  # output_filename = "../data/compilation_single_layer_long_range_N$(N)_v3.h5"
   # h5open(output_filename, "w") do file
   #   write(file, "cost function", cost_function)
   #   write(file, "optimization", optimization_history)
