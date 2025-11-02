@@ -315,6 +315,7 @@ let
       end
       println("")
 
+
       # for idx in 1:length(pairs)
       #   # Update each two-qubit gate using Evenbly-Vidal algorithm
       #   optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
@@ -367,65 +368,168 @@ let
 
 
 
-    # # Optimize two-qubit gates layer by layer in the backward direction if the number of layers is larger than one
-    # if length(gates_set) > 1
-    #   for layer_idx in length(gates_set):-1:1
-    #     println(repeat("#", 200))
-    #     println("Optimizing layered two-qubit gate in the backward direction @ layer $layer_idx")
-    #     println("")
+    # Optimize two-qubit gates layer by layer in the backward direction if the number of layers is larger than one
+    if length(gates_set) > 1
+      for layer_idx in length(gates_set):-1:1
+        println(repeat("#", 200))
+        println("")
+        println("Optimization iteration $iteration")
+        println("Optimizing layered two-qubit gate in layer $layer_idx")
+        println("")
+        println(repeat("#", 200))
+
+
+        optimization_gates = gates_set[layer_idx]
+        pairs = indices_pairs[layer_idx]
         
-    #     optimization_gates = gates_set[layer_idx]
-    #     pairs = indices_pairs[layer_idx]
 
-    #     # Update gates in one single layer in the forward direction 
-    #     println(repeat("#", 200))
-    #     println("Iteration = $iteration: forward sweep")
+        # Update each two-qubit gate in forward direction 
+        # println(repeat("#", 200))
+        println("")
+        println("FORWARD SWEEP")
+        println("")
 
-    #     for idx in 1 : length(pairs)
-    #       optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
-    #         ψ₀, 
-    #         ψ_R, 
-    #         optimization_gates, 
-    #         idx, 
-    #         pairs[idx][1], 
-    #         pairs[idx][2], 
-    #         cutoff
-    #       )
-
-    #       # Store traces and cost function values for analysis
-    #       append!(trace_history, tmp_trace)
-    #       append!(optimization_history, tmp_cost)
-    #     end
-    #     println("")
         
-    #     # Update gates in one single layer in the backward direction 
-    #     println(repeat("#", 200))
-    #     println("Iteration = $iteration: backward sweep")
-    #     for idx in length(pairs):-1:1
-    #       optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
-    #         ψ₀, 
-    #         ψ_R, 
-    #         optimization_gates, 
-    #         idx, 
-    #         pairs[idx][1], 
-    #         pairs[idx][2], 
-    #         cutoff
-    #       )
+        # Contract from the left and right to obtain the effective MPS for the target layer
+        if layer_idx > 1
+          ψ_left = deepcopy(ψ₀)
+          for contraction_idx in 1 : layer_idx - 1
+            ψ_left = apply(gates_set[contraction_idx], ψ_left; cutoff=cutoff)
+          end
+          normalize!(ψ_left)
+        else
+          ψ_left = deepcopy(ψ₀)
+        end
+      
 
-    #       # Store traces and cost function values for analysis
-    #       append!(trace_history, tmp_trace)
-    #       append!(optimization_history, tmp_cost)
-    #     end
-    #     println("")
+        if length(gates_set) - layer_idx >= 1
+          ψ_right = deepcopy(ψ_R)
+          
+          for contraction_idx in length(gates_set):-1:layer_idx + 1
+            intermediate_gates = deepcopy(gates_set[contraction_idx])
+            
+            for gate_idx in 1 : length(intermediate_gates)
+              intermediate_gates[gate_idx] = dag(intermediate_gates[gate_idx])
+              swapprime!(intermediate_gates[gate_idx], 0 => 1)
+              println("")
+            end
+
+            for gate_idx in 1 : length(intermediate_gates)
+              @show inds(intermediate_gates[gate_idx])[1]
+              @show inds(intermediate_gates[gate_idx])[2]
+              @show inds(intermediate_gates[gate_idx])[3]
+              @show inds(intermediate_gates[gate_idx])[4] 
+            end
+
+            ψ_right = apply(intermediate_gates, ψ_right; cutoff=cutoff)
+          end
+          normalize!(ψ_right)
+        else
+          ψ_right = deepcopy(ψ_R)
+        end
+        
+      
+        for idx in 1:length(pairs)
+          # Update each two-qubit gate using Evenbly-Vidal algorithm
+          optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
+            ψ_left, 
+            ψ_right, 
+            optimization_gates, 
+            idx, 
+            pairs[idx][1], 
+            pairs[idx][2], 
+            cutoff
+          )
+          
+          # Store traces and cost function values for analysis
+          append!(trace_history, tmp_trace)
+          append!(optimization_history, tmp_cost)
+        end
+        println("")
+        
+        
+        
+        # Update gates in the backward direction
+        println("")
+        println("BACKWARD SWEEP")
+        println("")
+
+        
+        for idx in length(pairs):-1:1
+          # Update each two-qubit gate using Evenbly-Vidal algorithm
+          optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
+            ψ_left, 
+            ψ_right, 
+            optimization_gates, 
+            idx, 
+            pairs[idx][1], 
+            pairs[idx][2], 
+            cutoff
+          )
+
+          # Store traces and cost function values for analysis
+          append!(trace_history, tmp_trace)
+          append!(optimization_history, tmp_cost)
+        end
+        println("")
 
 
-    #     # Compute and store the cost function after one full sweep of a specific layer 
-    #     append!(
-    #       cost_function, 
-    #       cost_function_layers(ψ₀, ψ_R, gates_set, cutoff)
-    #     )
-    #   end
-    # end    
+        # println(repeat("#", 200))
+        # println("Optimizing layered two-qubit gate in the backward direction @ layer $layer_idx")
+        # println("")
+        
+        # optimization_gates = gates_set[layer_idx]
+        # pairs = indices_pairs[layer_idx]
+
+        # # Update gates in one single layer in the forward direction 
+        # println(repeat("#", 200))
+        # println("Iteration = $iteration: forward sweep")
+
+        # for idx in 1 : length(pairs)
+        #   optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
+        #     ψ₀, 
+        #     ψ_R, 
+        #     optimization_gates, 
+        #     idx, 
+        #     pairs[idx][1], 
+        #     pairs[idx][2], 
+        #     cutoff
+        #   )
+
+        #   # Store traces and cost function values for analysis
+        #   append!(trace_history, tmp_trace)
+        #   append!(optimization_history, tmp_cost)
+        # end
+        # println("")
+        
+        # # Update gates in one single layer in the backward direction 
+        # println(repeat("#", 200))
+        # println("Iteration = $iteration: backward sweep")
+        # for idx in length(pairs):-1:1
+        #   optimization_gates[idx], tmp_trace, tmp_cost = update_single_gate(
+        #     ψ₀, 
+        #     ψ_R, 
+        #     optimization_gates, 
+        #     idx, 
+        #     pairs[idx][1], 
+        #     pairs[idx][2], 
+        #     cutoff
+        #   )
+
+        #   # Store traces and cost function values for analysis
+        #   append!(trace_history, tmp_trace)
+        #   append!(optimization_history, tmp_cost)
+        # end
+        # println("")
+
+
+        # Compute and store the cost function after one full sweep of a specific layer 
+        append!(
+          cost_function, 
+          cost_function_layers(ψ₀, ψ_R, gates_set, cutoff)
+        )
+      end
+    end    
   end
 
   
