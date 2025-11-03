@@ -32,7 +32,7 @@ const N = 12  # Total number of qubits
 const J₁ = 1.0
 const τ = 0.5
 const cutoff = 1e-12
-const nsweeps = 50
+const nsweeps = 100
 const time_machine = TimerOutput()  # Timing and profiling
 
 
@@ -43,12 +43,21 @@ let
   println("Optimize two-qubit gates to approximate the time evolution operator")
   
   
-  Random.seed!(123)
+  # Read in the ground-state wave function of the Kitaev honeycomb model as the target MPS 
+  file = h5open("../data/kitaev_honeycomb_Lx4_Ly3.h5", "r")
+  ψ_R = read(file, "psi", MPS)
+  @show typeof(ψ_R)
+  sites = siteinds(ψ_R)
+  close(file)
+
+  
+  
+  Random.seed!(1234567)
   # Initialize the origiinal random MPS
-  sites = siteinds("S=1/2", N; conserve_qns=false)
+  # sites = siteinds("S=1/2", N; conserve_qns=false)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
-  ψ₀ = random_mps(sites, state; linkdims=16)  # Initialize the original random MPS
-  # ψ₀ = MPS(sites, state)                    # Initialize the MPS in a Neel state
+  # ψ₀ = random_mps(sites, state; linkdims=16)  # Initialize the original random MPS
+  ψ₀ = MPS(sites, state)                        # Initialize the MPS in a Neel state
   # @show ψ₀
 
   
@@ -85,8 +94,10 @@ let
   # @show Sx₀
   # @show Sx
   # println("")
-  #*****************************************************************************************************
-  #*****************************************************************************************************
+  # *****************************************************************************************************
+  # *****************************************************************************************************
+  
+  
   
   
   
@@ -110,18 +121,29 @@ let
 
 
   # Construct a set of two-qubit gates with random initialization
-  # indices_pairs = [    
-  #                   # [[1, 4], [5, 8], [9, 12]],
-  #                   [[1, 2], [5, 10], [11, 12]], 
-  #                   [[2, 6], [7, 8], [10, 12]], 
-  #                   [[1, 2], [3, 6], [8, 10], [11, 12]]
-  #                 ]
   indices_pairs = [
+                    [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
+                    [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
+                    [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
+                    [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
+                    [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
+                    [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
+                    [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24]],
+                    [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], [22, 23]],
+                    # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16],
+                    # [17, 18], [19, 20], [21, 22]],
+                    # [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13], [14, 15], [16, 17],
+                    # [18, 19], [20, 21]],
+                    # [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11]],
+                    # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]],
+                    # [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11]], 
+                    # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]],
+                    # [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11]], 
                     # [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]]
                     # [[2, 3], [4, 5], [6, 7], [8, 9], [10, 11]]
-                    # [[1, 2], [3, 8], [9, 12]]
-                    [[1, 4], [5, 8], [9, 12]],
-                    [[2, 5], [6, 7], [8, 12]]
+                    # [[1, 2], [3, 8], [10, 12]]
+                    # [[1, 4], [5, 8], [9, 12]],
+                    # [[2, 5], [6, 7], [8, 12]]
                   ]
   gates_set = []
   for idx in 1 : length(indices_pairs)
@@ -134,7 +156,10 @@ let
       s₁ = sites[idx₁]
       s₂ = sites[idx₂]
       G_opt = randomITensor(s₁', s₂', s₁, s₂)
-      push!(optimization_gates, G_opt)
+      Gj_opt = exp(1.0im * G_opt)
+
+      # push!(optimization_gates, G_opt)
+      push!(optimization_gates, Gj_opt)
     end
     # @show optimization_gates
     push!(gates_set, optimization_gates)
@@ -142,48 +167,48 @@ let
   # @show gates_set
 
 
-  # Construct a sequence of two-qubit gates as the target unitary operators
-  reference_set = []
-  for idx in 1:length(indices_pairs)
-    gates = ITensor[]
-    pairs = indices_pairs[idx]
+  # # Construct a sequence of two-qubit gates as the target unitary operators
+  # reference_set = []
+  # for idx in 1:length(indices_pairs)
+  #   gates = ITensor[]
+  #   pairs = indices_pairs[idx]
 
-    for index in 1 : length(pairs)
-      idx₁, idx₂ = pairs[index][1], pairs[index][2]
-      @show idx₁, idx₂
-      s₁ = sites[idx₁]
-      s₂ = sites[idx₂]
+  #   for index in 1 : length(pairs)
+  #     idx₁, idx₂ = pairs[index][1], pairs[index][2]
+  #     @show idx₁, idx₂
+  #     s₁ = sites[idx₁]
+  #     s₂ = sites[idx₂]
 
-      # Define a two-qubit gate, using the Heisenberg interaction as an example 
-      hj = 1/2 * J₁ * op("S+", s₁) * op("S-", s₂) + 1/2 * J₁ * op("S-", s₁) * op("S+", s₂) 
-        + J₁ * op("Sz", s₁) * op("Sz", s₂)
-      Gj = exp(-im * τ/2 * hj)
-      push!(gates, Gj)
-    end
-    push!(reference_set, gates)
-    @show inds(gates)
-  end
+  #     # Define a two-qubit gate, using the Heisenberg interaction as an example 
+  #     hj = 1/2 * J₁ * op("S+", s₁) * op("S-", s₂) + 1/2 * J₁ * op("S-", s₁) * op("S+", s₂) 
+  #       + J₁ * op("Sz", s₁) * op("Sz", s₂)
+  #     Gj = exp(-im * τ/2 * hj)
+  #     push!(gates, Gj)
+  #   end
+  #   push!(reference_set, gates)
+  #   @show inds(gates)
+  # end
   
-  # @show reference_set
+  # # @show reference_set
 
 
 
-  # Apply the sequence of two-qubit gates to the original MPS
-  ψ_R = deepcopy(ψ₀)
-  for index in 1:length(reference_set)
-    @show inds(reference_set[index])
-    ψ_R = apply(reference_set[index], ψ_R; cutoff=cutoff)
-  end
-  normalize!(ψ_R)
+  # # Apply the sequence of two-qubit gates to the original MPS
+  # ψ_R = deepcopy(ψ₀)
+  # for index in 1:length(reference_set)
+  #   @show inds(reference_set[index])
+  #   ψ_R = apply(reference_set[index], ψ_R; cutoff=cutoff)
+  # end
+  # normalize!(ψ_R)
   
-  # Measure local observables (one-point functions)
-  Sx = expect(ψ_R, "Sx", sites = 1 : N)
-  Sz = expect(ψ_R, "Sz", sites = 1 : N)
-  println("")
-  println("Verify the change in local observables after applying the target two-qubit gates:")
-  @show Sx₀
-  @show Sx
-  println("")
+  # # Measure local observables (one-point functions)
+  # Sx = expect(ψ_R, "Sx", sites = 1 : N)
+  # Sz = expect(ψ_R, "Sz", sites = 1 : N)
+  # println("")
+  # println("Verify the change in local observables after applying the target two-qubit gates:")
+  # @show Sx₀
+  # @show Sx
+  # println("")
   #*****************************************************************************************************
   #*****************************************************************************************************
 
@@ -238,25 +263,25 @@ let
           
           
           for gate_idx in 1 : length(intermediate_gates)
-            @show inds(intermediate_gates[gate_idx])[1]
-            @show inds(intermediate_gates[gate_idx])[2]
-            @show inds(intermediate_gates[gate_idx])[3]
-            @show inds(intermediate_gates[gate_idx])[4]
+            # @show inds(intermediate_gates[gate_idx])[1]
+            # @show inds(intermediate_gates[gate_idx])[2]
+            # @show inds(intermediate_gates[gate_idx])[3]
+            # @show inds(intermediate_gates[gate_idx])[4]
             intermediate_gates[gate_idx] = dag(intermediate_gates[gate_idx])
             swapprime!(intermediate_gates[gate_idx], 0 => 1)
-            @show inds(intermediate_gates[gate_idx])[1]
-            @show inds(intermediate_gates[gate_idx])[2]
-            @show inds(intermediate_gates[gate_idx])[3]
-            @show inds(intermediate_gates[gate_idx])[4]
-            println("")
+            # @show inds(intermediate_gates[gate_idx])[1]
+            # @show inds(intermediate_gates[gate_idx])[2]
+            # @show inds(intermediate_gates[gate_idx])[3]
+            # @show inds(intermediate_gates[gate_idx])[4]
+            # println("")
           end
 
-          for gate_idx in 1 : length(intermediate_gates)
-            @show inds(intermediate_gates[gate_idx])[1]
-            @show inds(intermediate_gates[gate_idx])[2]
-            @show inds(intermediate_gates[gate_idx])[3]
-            @show inds(intermediate_gates[gate_idx])[4] 
-          end
+          # for gate_idx in 1 : length(intermediate_gates)
+          #   @show inds(intermediate_gates[gate_idx])[1]
+          #   @show inds(intermediate_gates[gate_idx])[2]
+          #   @show inds(intermediate_gates[gate_idx])[3]
+          #   @show inds(intermediate_gates[gate_idx])[4] 
+          # end
 
           ψ_right = apply(intermediate_gates, ψ_right; cutoff=cutoff)
           # ψ_right = contract(ψ_right, intermediate_gates; cutoff=cutoff)
@@ -414,12 +439,12 @@ let
               println("")
             end
 
-            for gate_idx in 1 : length(intermediate_gates)
-              @show inds(intermediate_gates[gate_idx])[1]
-              @show inds(intermediate_gates[gate_idx])[2]
-              @show inds(intermediate_gates[gate_idx])[3]
-              @show inds(intermediate_gates[gate_idx])[4] 
-            end
+            # for gate_idx in 1 : length(intermediate_gates)
+            #   @show inds(intermediate_gates[gate_idx])[1]
+            #   @show inds(intermediate_gates[gate_idx])[2]
+            #   @show inds(intermediate_gates[gate_idx])[3]
+            #   @show inds(intermediate_gates[gate_idx])[4] 
+            # end
 
             ψ_right = apply(intermediate_gates, ψ_right; cutoff=cutoff)
           end
@@ -447,8 +472,8 @@ let
         end
         println("")
         
-        
-        
+    
+
         # Update gates in the backward direction
         println("")
         println("BACKWARD SWEEP")
@@ -540,8 +565,8 @@ let
   println(repeat("#", 200))
 
 
-  # Store the optimization data into an HDF5 file
-  # output_filename = "../data/compilation_single_layer_long_range_N$(N)_v3.h5"
+  # # Store the optimization data into an HDF5 file
+  # output_filename = "../data/compilation_heisenberg_N$(N)_v4.h5"
   # h5open(output_filename, "w") do file
   #   write(file, "cost function", cost_function)
   #   write(file, "optimization", optimization_history)

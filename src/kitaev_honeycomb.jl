@@ -11,19 +11,23 @@ using TimerOutputs
 using MAT
 using ITensors.NDTensors
 
+
 include("HoneycombLattice.jl")
 include("Entanglement.jl")
 include("TopologicalLoops.jl")
 include("CustomObserver.jl")
+
 
 # Set up parameters for multithreading for BLAS/LAPACK and Block sparse multithreading
 MKL_NUM_THREADS = 8
 OPENBLAS_NUM_THREADS = 8
 OMP_NUM_THREADS = 8
 
+
 # Monitor the number of threads used by BLAS and LAPACK
 @show BLAS.get_config()
 @show BLAS.get_num_threads()
+
 
 const Nx_unit = 4
 const Ny_unit = 3
@@ -31,8 +35,10 @@ const Nx = 2 * Nx_unit
 const Ny = Ny_unit
 const N = Nx * Ny
 
+
 # Timing and profiling
 const time_machine = TimerOutput()
+
 
 let
   # Set up the interaction parameters for the Hamiltonian
@@ -101,7 +107,6 @@ let
   @show xbond, ybond, zbond
   #***************************************************************************************************************
   #***************************************************************************************************************  
-
 
   # # Generate the indices for all loop operators along the cylinder
   # loop_operator = Vector{String}(["iY", "X", "iY", "X", "iY", "X", "iY", "X"])  # Hard-coded for width-4 cylinders
@@ -195,17 +200,21 @@ let
   sites = siteinds("S=1/2", N; conserve_qns=false)
   state = [isodd(n) ? "Up" : "Dn" for n in 1:N]
 
+  
   # Set up the initial MPS state
   # ψ₀ = MPS(sites, state)
   ψ₀ = random_mps(sites, state; linkdims=2)
   # @show ψ₀
 
+  
   # Set up the Hamiltonian as MPO
   H = MPO(os, sites)
   
+  
   # Set up the parameters including bond dimensions and truncation error
-  nsweeps = 30
-  maxdim  = [4, 8, 16, 32]
+  nsweeps = 20
+  maxdim = [4, 8, 128, 512]
+  # maxdim  = [4, 8, 16, 32]
   cutoff  = [1E-10]
   eigsolve_krylovdim = 100
   which_decomp = "svd"
@@ -325,27 +334,27 @@ let
   # # @show order_parameter
   # # println("")
 
-  # @show time_machine
-  # # h5open("../data/Kitaev_FM_Lx$(Nx_unit)_Ly$(Ny_unit)_chi$(maximum(maxdim)).h5", "w") do file
-  # #   write(file, "psi", ψ)
-  # #   write(file, "NormalizedE0", energy / number_of_bonds)
-  # #   write(file, "E0", energy)
-  # #   write(file, "E0variance", variance)
-  # #   write(file, "Ehist", custom_observer.ehistory)
-  # #   write(file, "Bond", custom_observer.chi)
-  # #   # write(file, "Entropy", SvN)
-  # #   write(file, "Sx0", Sx₀)
-  # #   write(file, "Sx",  Sx)
-  # #   # write(file, "Cxx", xxcorr)
-  # #   write(file, "Sy0", Sy₀)
-  # #   write(file, "Sy", Sy)
-  # #   # write(file, "Cyy", yycorr)
-  # #   write(file, "Sz0", Sz₀)
-  # #   write(file, "Sz",  Sz)
-  # #   # write(file, "Czz", zzcorr)
-  # #   # write(file, "Plaquette", W_operator_eigenvalues)
-  # #   # write(file, "Loop", yloop_eigenvalues)
-  # # end
+  
+  @show time_machine
+  h5open("../data/kitaev_honeycomb_Lx4_Ly3.h5", "w") do file
+    write(file, "psi", ψ)
+    write(file, "E0", energy)
+    write(file, "E0variance", variance)
+    write(file, "Ehist", custom_observer.ehistory)
+    write(file, "Bond", custom_observer.chi)
+    # write(file, "Entropy", SvN)
+    # write(file, "Sx0", Sx₀)
+    # write(file, "Sx",  Sx)
+    # write(file, "Cxx", xxcorr)
+    # write(file, "Sy0", Sy₀)
+    # write(file, "Sy", Sy)
+    # write(file, "Cyy", yycorr)
+    # write(file, "Sz0", Sz₀)
+    # write(file, "Sz",  Sz)
+    # write(file, "Czz", zzcorr)
+    # write(file, "Plaquette", W_operator_eigenvalues)
+    # write(file, "Loop", yloop_eigenvalues)
+  end
 
   return
 end
